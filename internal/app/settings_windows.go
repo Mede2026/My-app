@@ -383,6 +383,14 @@ func settingsWndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 	s := app.settings
 
 	switch uint32(message) {
+	case w32.WM_CTLCOLORSTATIC, w32.WM_CTLCOLORBTN:
+		// Sans cela, Windows peint le fond des libelles, des cadres et des cases
+		// a cocher en gris, ce qui laisserait des rectangles ternes sur la
+		// fenetre blanche. On reprend les couleurs du theme du systeme.
+		w32.SetBkColor(w32.HDC(wparam), w32.SysColor(w32.COLOR_WINDOW))
+		w32.SetTextColor(w32.HDC(wparam), w32.SysColor(w32.COLOR_WINDOWTEXT))
+		return uintptr(w32.SysColorBrush(w32.COLOR_WINDOW))
+
 	case w32.WM_COMMAND:
 		s.command(uint32(wparam) & 0xFFFF)
 		return 0

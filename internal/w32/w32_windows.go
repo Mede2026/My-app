@@ -130,6 +130,8 @@ const (
 	IDC_ARROW          = 32512
 	IDC_HAND           = 32649
 	COLOR_WINDOW       = 5
+	COLOR_WINDOWTEXT   = 8
+	COLOR_BTNFACE      = 15
 	SM_CXSMICON        = 49
 	SM_CYSMICON        = 50
 	SPI_GETWORKAREA    = 0x0030
@@ -697,6 +699,26 @@ var procAdjustWindowRect = user32.NewProc("AdjustWindowRect")
 // taille utile voulue (barre de titre et bordures comprises).
 func AdjustWindowRect(rect *RECT, style uint32) {
 	procAdjustWindowRect.Call(uintptr(unsafe.Pointer(rect)), uintptr(style), 0)
+}
+
+var (
+	procGetSysColor      = user32.NewProc("GetSysColor")
+	procGetSysColorBrush = user32.NewProc("GetSysColorBrush")
+)
+
+// SysColor rend une couleur du theme courant de Windows (fond de fenetre,
+// couleur du texte...). La respecter, plutot que d'ecrire du blanc en dur,
+// garde l'application lisible avec les themes a fort contraste.
+func SysColor(index int32) uintptr {
+	color, _, _ := procGetSysColor.Call(uintptr(index))
+	return color
+}
+
+// SysColorBrush rend le pinceau correspondant. Il appartient au systeme :
+// il ne faut jamais le detruire.
+func SysColorBrush(index int32) HBRUSH {
+	brush, _, _ := procGetSysColorBrush.Call(uintptr(index))
+	return HBRUSH(brush)
 }
 
 func GetDC(hwnd HWND) HDC {
