@@ -1,9 +1,8 @@
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-build/
+# Binaires construits
 dist/
-*.spec.bak
-.pytest_cache/
+*.exe
+# Fichiers systeme
+.DS_Store
+# Reglages locaux
 config.json
+__pycache__/

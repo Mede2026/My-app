@@ -1,3 +1,0 @@
-# CryptoBulle n'a AUCUNE dependance a l'execution.
-# Tout passe par la bibliotheque standard de Python (tkinter, hashlib, ctypes)
-# et par les API de Windows (CNG pour AES-GCM, RegisterHotKey, Shell_NotifyIcon).

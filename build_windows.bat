@@ -1,26 +1,18 @@
 @echo off
-REM Construit CryptoBulle. Usage :
-REM   build_windows.bat            -> dist\CryptoBulle\CryptoBulle.exe (demarrage le plus rapide)
-REM   build_windows.bat onefile    -> dist\CryptoBulle.exe (fichier unique)
+REM Construit dist\CryptoBulle.exe. A lancer dans une invite de commandes Windows.
+REM Prerequis : Go 1.24 ou plus recent (https://go.dev/dl/).
 setlocal
 
-if /i "%~1"=="onefile" set CRYPTOBULLE_ONEFILE=1
+where go >nul 2>&1 || (echo Go n'est pas installe. Voir https://go.dev/dl/ & exit /b 1)
 
-echo [1/4] Environnement virtuel...
-if not exist .venv (python -m venv .venv || goto :error)
+if not exist dist mkdir dist
 
-echo [2/4] Outils de construction...
-call .venv\Scripts\python.exe -m pip install --upgrade pip >nul
-call .venv\Scripts\python.exe -m pip install -r requirements-dev.txt || goto :error
-
-echo [3/4] Icone...
-call .venv\Scripts\python.exe scripts\make_icon.py || goto :error
-
-echo [4/4] Compilation...
-call .venv\Scripts\python.exe -m PyInstaller --noconfirm --clean CryptoBulle.spec || goto :error
+echo Compilation...
+go build -trimpath -ldflags="-s -w -H windowsgui" -o dist\CryptoBulle.exe .\cmd\cryptobulle || goto :error
 
 echo.
-if defined CRYPTOBULLE_ONEFILE (echo Termine : dist\CryptoBulle.exe) else (echo Termine : dist\CryptoBulle\CryptoBulle.exe)
+echo Termine : dist\CryptoBulle.exe
+echo Double-cliquez dessus, rien d'autre a installer.
 goto :eof
 
 :error

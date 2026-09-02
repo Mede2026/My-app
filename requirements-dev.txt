@@ -1,4 +1,0 @@
-# Outils necessaires seulement pour construire l'executable et lancer les tests.
-pyinstaller>=6.3      # fabrication de CryptoBulle.exe
-pillow>=10.0          # dessin de l'icone, a la construction uniquement
-cryptography>=42.0    # moteur AES-GCM de secours, pour tester hors Windows
