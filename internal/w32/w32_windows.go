@@ -702,9 +702,18 @@ func AdjustWindowRect(rect *RECT, style uint32) {
 }
 
 var (
+	procIsDialogMessage  = user32.NewProc("IsDialogMessageW")
 	procGetSysColor      = user32.NewProc("GetSysColor")
 	procGetSysColorBrush = user32.NewProc("GetSysColorBrush")
 )
+
+// IsDialogMessage confie le message a Windows pour la navigation au clavier
+// dans une fenetre a controles : Tab d'un champ a l'autre, Entree pour valider.
+// Renvoie vrai si le message a ete traite et ne doit pas etre distribue.
+func IsDialogMessage(hwnd HWND, message *MSG) bool {
+	handled, _, _ := procIsDialogMessage.Call(uintptr(hwnd), uintptr(unsafe.Pointer(message)))
+	return handled != 0
+}
 
 // SysColor rend une couleur du theme courant de Windows (fond de fenetre,
 // couleur du texte...). La respecter, plutot que d'ecrire du blanc en dur,

@@ -227,6 +227,14 @@ func serviceWndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 func (a *App) loop() {
 	var message w32.MSG
 	for w32.GetMessage(&message) > 0 {
+		// Navigation au clavier dans la fenetre de reglages (Tab, Entree).
+		// Pendant l'enregistrement d'un raccourci, les touches doivent nous
+		// parvenir telles quelles : on court-circuite alors ce traitement.
+		if s := a.settings; s != nil && s.hwnd != 0 && s.capture == 0 {
+			if w32.IsDialogMessage(s.hwnd, &message) {
+				continue
+			}
+		}
 		w32.TranslateMessage(&message)
 		w32.DispatchMessage(&message)
 	}

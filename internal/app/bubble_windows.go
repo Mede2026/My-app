@@ -423,10 +423,14 @@ func bubbleWndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			b.hovered = hovered
 			w32.InvalidateRect(b.hwnd, false)
 		}
+		return 0
+
+	case w32.WM_SETCURSOR:
+		// Sans ce traitement, Windows remettrait la fleche a chaque mouvement.
 		if b.hovered != hoverNone {
 			w32.SetCursor(w32.LoadCursor(w32.IDC_HAND))
+			return 1
 		}
-		return 0
 
 	case w32.WM_MOUSELEAVE:
 		b.mouseInside = false
