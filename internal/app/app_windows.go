@@ -61,7 +61,10 @@ func Run() error {
 			appName, w32.MB_OK|w32.MB_ICONINFORMATION)
 		return nil
 	}
+	// Le manifeste demande deja les controles modernes et la gestion fine de la
+	// densite d'ecran ; ces deux appels servent de filet si le manifeste manque.
 	w32.EnableDPIAwareness()
+	w32.InitCommonControls()
 
 	app := &App{cfg: config.Load(), tasks: make(chan func(), 64)}
 	currentApp = app

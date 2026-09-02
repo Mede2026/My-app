@@ -15,7 +15,13 @@ import (
 // Fenetre de reglages : phrase secrete, raccourcis, comportement, et un petit
 // atelier pour chiffrer ou dechiffrer a la main.
 
-const settingsClass = "CryptoBulleSettings"
+const (
+	settingsClass = "CryptoBulleSettings"
+
+	// Taille de la zone utile, en points logiques.
+	contentWidth  = 470
+	contentHeight = 620
+)
 
 // Identifiants des controles.
 const (
@@ -42,10 +48,19 @@ const (
 
 var settingsProc = windows.NewCallback(settingsWndProc)
 
+// control retient la place logique d'un controle, pour pouvoir le replacer
+// quand la fenetre passe sur un ecran de densite differente.
+type control struct {
+	hwnd                w32.HWND
+	x, y, width, height int32
+}
+
 type settingsWindow struct {
-	app  *App
-	hwnd w32.HWND
-	font w32.HFONT
+	app      *App
+	hwnd     w32.HWND
+	font     w32.HFONT
+	dpi      int32
+	controls []control
 
 	passphrase, showPassphrase   w32.HWND
 	hotkeyDecrypt, hotkeyEncrypt w32.HWND
@@ -85,23 +100,47 @@ func newSettingsWindow(app *App) *settingsWindow {
 	}
 	w32.RegisterClass(&class)
 
-	settings := &settingsWindow{app: app}
-	dpi := app.dpi
-	scale := func(value int32) int32 { return value * dpi / 96 }
-
 	const style = w32.WS_CAPTION | w32.WS_SYSMENU | w32.WS_MINIMIZEBOX
-	client := w32.RECT{Right: scale(470), Bottom: scale(620)}
-	w32.AdjustWindowRect(&client, style)
 
-	area := w32.WorkArea()
+	settings := &settingsWindow{app: app}
 	settings.hwnd = w32.CreateWindowEx(
-		0, settingsClass, appName+" - reglages", style,
-		(area.Width()-client.Width())/2, (area.Height()-client.Height())/3,
-		client.Width(), client.Height(), 0, 0, instance,
+		0, settingsClass, appName+" - reglages", style, 0, 0, 100, 100, 0, 0, instance,
 	)
-	settings.font = w32.CreateFont("Segoe UI", 9, dpi, false)
-	settings.build(instance, scale)
+	// La densite depend de l'ecran ou la fenetre est apparue : on la lit apres
+	// la creation, puis on donne a la fenetre sa vraie taille.
+	settings.dpi = w32.DPI(settings.hwnd)
+	settings.font = w32.CreateFont("Segoe UI", 9, settings.dpi, false)
+	settings.resize(style)
+	settings.build(instance, settings.scale)
 	return settings
+}
+
+func (s *settingsWindow) scale(value int32) int32 { return value * s.dpi / 96 }
+
+// resize donne a la fenetre la taille utile voulue, bordures comprises, et la
+// centre sur la zone de travail.
+func (s *settingsWindow) resize(style uint32) {
+	client := w32.RECT{Right: s.scale(contentWidth), Bottom: s.scale(contentHeight)}
+	w32.AdjustWindowRect(&client, style)
+	area := w32.WorkArea()
+	w32.SetWindowPos(s.hwnd, 0,
+		area.Left+(area.Width()-client.Width())/2,
+		area.Top+(area.Height()-client.Height())/3,
+		client.Width(), client.Height(), w32.SWP_NOACTIVATE)
+}
+
+// relayout replace tous les controles apres un changement de densite d'ecran.
+func (s *settingsWindow) relayout() {
+	if s.font != 0 {
+		w32.DeleteObject(uintptr(s.font))
+	}
+	s.font = w32.CreateFont("Segoe UI", 9, s.dpi, false)
+	for _, item := range s.controls {
+		w32.SendMessage(item.hwnd, w32.WM_SETFONT, uintptr(s.font), 1)
+		w32.SetWindowPos(item.hwnd, 0, s.scale(item.x), s.scale(item.y),
+			s.scale(item.width), s.scale(item.height), w32.SWP_NOACTIVATE)
+	}
+	w32.InvalidateRect(s.hwnd, true)
 }
 
 // build cree tous les controles. Les coordonnees sont en points logiques,
@@ -176,11 +215,12 @@ func (s *settingsWindow) build(instance windows.Handle, scale func(int32) int32)
 
 // add cree un controle enfant et lui donne la police de l'interface.
 func (s *settingsWindow) add(class, text string, style uint32, x, y, width, height int32, id uintptr, instance windows.Handle, scale func(int32) int32) w32.HWND {
-	control := w32.CreateWindowEx(0, class, text, style,
+	created := w32.CreateWindowEx(0, class, text, style,
 		scale(x), scale(y), scale(width), scale(height),
 		s.hwnd, w32.HMENU(id), instance)
-	w32.SendMessage(control, w32.WM_SETFONT, uintptr(s.font), 1)
-	return control
+	w32.SendMessage(created, w32.WM_SETFONT, uintptr(s.font), 1)
+	s.controls = append(s.controls, control{created, x, y, width, height})
+	return created
 }
 
 // load remplit les controles a partir des reglages.
@@ -351,6 +391,14 @@ func settingsWndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		if s.capture != 0 {
 			s.finishCapture(uint32(wparam))
 		}
+		return 0
+
+	case w32.WM_DPICHANGED:
+		s.dpi = int32(wparam & 0xFFFF)
+		suggested := w32.RectAt(lparam)
+		w32.SetWindowPos(s.hwnd, 0, suggested.Left, suggested.Top,
+			suggested.Width(), suggested.Height(), w32.SWP_NOACTIVATE)
+		s.relayout()
 		return 0
 
 	case w32.WM_CLOSE:

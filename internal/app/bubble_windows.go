@@ -11,6 +11,11 @@ import (
 // La bulle est une petite fenetre sans bordure, toujours au-dessus des autres,
 // qui apparait pres du curseur. Elle est construite une seule fois puis
 // reutilisee : le deuxieme affichage est donc immediat.
+//
+// Tout est dessine a la main : fond, bande de couleur, boutons aux coins
+// arrondis et bords lisses. Les coins de la fenetre elle-meme sont arrondis par
+// Windows 11 ; sur Windows 10, ils restent droits, ce qui correspond au style
+// du systeme.
 
 const (
 	bubbleClass = "CryptoBulleBubble"
@@ -25,21 +30,32 @@ const (
 	bubbleBodyID = 100
 )
 
-// Dimensions en points « logiques » (mises a l'echelle selon l'ecran).
+// Dimensions en points logiques, converties selon la densite de l'ecran.
 const (
-	bubbleWidth   = 400
-	bubbleBorder  = 2
-	bubblePadding = 12
-	headerHeight  = 26
-	footerHeight  = 32
+	bubbleWidth   = 420
+	accentBar     = 4
+	bubblePadding = 14
+	headerHeight  = 30
+	footerHeight  = 38
 	bodyMinHeight = 22
 	bodyMaxHeight = 260
-	buttonWidth   = 66
-	buttonHeight  = 22
+	buttonWidth   = 74
+	buttonHeight  = 26
+	buttonRadius  = 5
+	crossSize     = 20
+)
+
+// Elements survolables de la bulle.
+const (
+	hoverNone = iota
+	hoverCopy
+	hoverClose
+	hoverCross
 )
 
 type palette struct {
 	background, text, title, muted, button, buttonText uintptr
+	white                                              uintptr
 }
 
 var themes = map[string]palette{
@@ -50,14 +66,16 @@ var themes = map[string]palette{
 		muted:      w32.RGB(0x98, 0xa2, 0xb3),
 		button:     w32.RGB(0x2a, 0x2f, 0x3a),
 		buttonText: w32.RGB(0xe6, 0xe9, 0xef),
+		white:      w32.RGB(0xff, 0xff, 0xff),
 	},
 	"clair": {
 		background: w32.RGB(0xff, 0xff, 0xff),
 		text:       w32.RGB(0x1f, 0x29, 0x37),
 		title:      w32.RGB(0x11, 0x18, 0x27),
 		muted:      w32.RGB(0x6b, 0x72, 0x80),
-		button:     w32.RGB(0xee, 0xf2, 0xf7),
+		button:     w32.RGB(0xef, 0xf2, 0xf7),
 		buttonText: w32.RGB(0x11, 0x18, 0x27),
+		white:      w32.RGB(0xff, 0xff, 0xff),
 	},
 }
 
@@ -79,6 +97,8 @@ type bubbleWindow struct {
 	seconds     int
 	hint        string
 
+	dpi        int32
+	theme      string
 	palette    palette
 	accent     uintptr
 	background w32.HBRUSH
@@ -88,13 +108,14 @@ type bubbleWindow struct {
 
 	copyRect, closeRect, crossRect w32.RECT
 	alpha                          int32
-	hovered                        bool
-	visible                        bool
+	hovered                        int
+	mouseInside                    bool
 }
 
 func newBubbleWindow(app *App) *bubbleWindow {
 	instance := w32.ModuleHandle()
 	class := w32.WNDCLASS{
+		Style:     w32.CS_DROPSHADOW, // legere ombre portee, comme les menus
 		WndProc:   bubbleProc,
 		Instance:  instance,
 		ClassName: w32.Str(bubbleClass),
@@ -108,6 +129,8 @@ func newBubbleWindow(app *App) *bubbleWindow {
 		bubbleClass, appName, w32.WS_POPUP,
 		0, 0, 10, 10, 0, 0, instance,
 	)
+	w32.RoundWindowCorners(bubble.hwnd)
+	bubble.dpi = w32.DPI(bubble.hwnd)
 
 	// Le corps du message est un champ de saisie en lecture seule : on obtient
 	// gratuitement la selection a la souris et le defilement a la molette.
@@ -118,34 +141,42 @@ func newBubbleWindow(app *App) *bubbleWindow {
 	)
 
 	bubble.applyTheme(app.config().Theme)
+	bubble.makeFonts()
 	return bubble
 }
 
-func (b *bubbleWindow) scale(value int32) int32 { return value * b.app.dpi / 96 }
+func (b *bubbleWindow) scale(value int32) int32 { return value * b.dpi / 96 }
 
 func (b *bubbleWindow) applyTheme(theme string) {
 	chosen, ok := themes[theme]
 	if !ok {
 		chosen = themes["sombre"]
+		theme = "sombre"
 	}
 	if b.background != 0 {
 		w32.DeleteObject(uintptr(b.background))
 	}
+	b.theme = theme
 	b.palette = chosen
 	b.background = w32.CreateSolidBrush(chosen.background)
+}
 
-	if b.titleFont == 0 {
-		dpi := b.app.dpi
-		b.titleFont = w32.CreateFont("Segoe UI", 10, dpi, true)
-		b.bodyFont = w32.CreateFont("Segoe UI", 10, dpi, false)
-		b.smallFont = w32.CreateFont("Segoe UI", 8, dpi, false)
-		w32.SendMessage(b.body, w32.WM_SETFONT, uintptr(b.bodyFont), 1)
+// makeFonts (re)cree les polices a la taille de l'ecran courant.
+func (b *bubbleWindow) makeFonts() {
+	for _, font := range []w32.HFONT{b.titleFont, b.bodyFont, b.smallFont} {
+		if font != 0 {
+			w32.DeleteObject(uintptr(font))
+		}
 	}
+	b.titleFont = w32.CreateFont("Segoe UI", 10, b.dpi, true)
+	b.bodyFont = w32.CreateFont("Segoe UI", 10, b.dpi, false)
+	b.smallFont = w32.CreateFont("Segoe UI", 9, b.dpi, false)
+	w32.SendMessage(b.body, w32.WM_SETFONT, uintptr(b.bodyFont), 1)
 }
 
 // show affiche la bulle avec un nouveau contenu.
 func (b *bubbleWindow) show(title, text, kind string, seconds int) {
-	if theme := b.app.config().Theme; themes[theme].background != b.palette.background {
+	if theme := b.app.config().Theme; theme != b.theme {
 		b.applyTheme(theme)
 	}
 	b.title, b.text, b.kind, b.seconds = title, text, kind, seconds
@@ -154,6 +185,8 @@ func (b *bubbleWindow) show(title, text, kind string, seconds int) {
 		b.accent = accents[kindInfo]
 	}
 	b.hint = "Echap pour fermer"
+	b.hovered = hoverNone
+	b.mouseInside = false
 
 	w32.SetWindowText(b.body, strings.ReplaceAll(text, "\n", "\r\n"))
 	b.layout()
@@ -163,17 +196,18 @@ func (b *bubbleWindow) show(title, text, kind string, seconds int) {
 	w32.ShowWindow(b.hwnd, w32.SW_SHOW)
 	w32.SetForegroundWindow(b.hwnd)
 	w32.SetFocus(b.hwnd) // le focus reste a la fenetre : Echap fonctionne
-	w32.InvalidateRect(b.hwnd, true)
-	b.visible = true
+	w32.InvalidateRect(b.hwnd, false)
 
-	w32.SetTimer(b.hwnd, timerFade, 12)
+	w32.SetTimer(b.hwnd, timerFade, 10)
 	b.startCloseTimer()
 }
 
 // layout calcule la taille de la bulle et la place pres du curseur.
 func (b *bubbleWindow) layout() {
 	width := b.scale(bubbleWidth)
-	inner := width - 2*b.scale(bubbleBorder) - 2*b.scale(bubblePadding)
+	left := b.scale(accentBar) + b.scale(bubblePadding)
+	right := width - b.scale(bubblePadding)
+	inner := right - left
 
 	bodyHeight := b.measureBody(inner)
 	if maximum := b.scale(bodyMaxHeight); bodyHeight > maximum {
@@ -183,8 +217,7 @@ func (b *bubbleWindow) layout() {
 	if minimum := b.scale(bodyMinHeight); bodyHeight < minimum {
 		bodyHeight = minimum
 	}
-
-	height := 2*b.scale(bubbleBorder) + b.scale(headerHeight) + bodyHeight + b.scale(footerHeight)
+	height := b.scale(headerHeight) + bodyHeight + b.scale(footerHeight)
 
 	// Placement : sous le curseur, ou au-dessus s'il n'y a pas la place.
 	cursor := w32.CursorPos()
@@ -203,29 +236,25 @@ func (b *bubbleWindow) layout() {
 	if y < area.Top+b.scale(8) {
 		y = area.Top + b.scale(8)
 	}
-
 	w32.SetWindowPos(b.hwnd, w32.HWND_TOPMOST, x, y, width, height, w32.SWP_NOACTIVATE)
 
-	// Le champ de texte occupe la zone centrale.
-	left := b.scale(bubbleBorder) + b.scale(bubblePadding)
-	top := b.scale(bubbleBorder) + b.scale(headerHeight)
+	top := b.scale(headerHeight)
 	w32.SetWindowPos(b.body, 0, left, top, inner, bodyHeight, w32.SWP_NOACTIVATE)
 
 	// Boutons du bas, alignes a droite.
-	buttonTop := top + bodyHeight + b.scale(5)
-	right := width - b.scale(bubbleBorder) - b.scale(bubblePadding)
+	buttonTop := top + bodyHeight + b.scale(7)
 	b.closeRect = w32.RECT{
 		Left: right - b.scale(buttonWidth), Top: buttonTop,
 		Right: right, Bottom: buttonTop + b.scale(buttonHeight),
 	}
 	b.copyRect = w32.RECT{
-		Left: b.closeRect.Left - b.scale(buttonWidth) - b.scale(6), Top: buttonTop,
-		Right: b.closeRect.Left - b.scale(6), Bottom: buttonTop + b.scale(buttonHeight),
+		Left: b.closeRect.Left - b.scale(buttonWidth+8), Top: buttonTop,
+		Right: b.closeRect.Left - b.scale(8), Bottom: buttonTop + b.scale(buttonHeight),
 	}
-	cross := b.scale(18)
+	cross := b.scale(crossSize)
 	b.crossRect = w32.RECT{
-		Left: right - cross, Top: b.scale(bubbleBorder) + b.scale(4),
-		Right: right, Bottom: b.scale(bubbleBorder) + b.scale(4) + cross,
+		Left: right - cross, Top: b.scale(6),
+		Right: right, Bottom: b.scale(6) + cross,
 	}
 }
 
@@ -243,7 +272,7 @@ func (b *bubbleWindow) measureBody(width int32) int32 {
 
 func (b *bubbleWindow) startCloseTimer() {
 	w32.KillTimer(b.hwnd, timerClose)
-	if b.seconds > 0 && !b.hovered {
+	if b.seconds > 0 && !b.mouseInside {
 		w32.SetTimer(b.hwnd, timerClose, uint32(b.seconds*1000))
 	}
 }
@@ -252,8 +281,8 @@ func (b *bubbleWindow) hide() {
 	w32.KillTimer(b.hwnd, timerClose)
 	w32.KillTimer(b.hwnd, timerFade)
 	w32.ShowWindow(b.hwnd, w32.SW_HIDE)
-	b.visible = false
-	b.hovered = false
+	b.mouseInside = false
+	b.hovered = hoverNone
 }
 
 func (b *bubbleWindow) paint() {
@@ -262,60 +291,86 @@ func (b *bubbleWindow) paint() {
 	defer w32.EndPaint(b.hwnd, &paint)
 
 	client := w32.ClientRect(b.hwnd)
-	border := w32.CreateSolidBrush(b.accent)
-	w32.FillRect(dc, client, border) // le fond accentue fait office de bordure
-	w32.DeleteObject(uintptr(border))
+	background := b.palette.background
 
-	edge := b.scale(bubbleBorder)
-	inside := w32.RECT{
-		Left: client.Left + edge, Top: client.Top + edge,
-		Right: client.Right - edge, Bottom: client.Bottom - edge,
-	}
-	w32.FillRect(dc, inside, b.background)
+	// Fond de la carte.
+	w32.FillRect(dc, client, b.background)
+
+	// Bande verticale coloree a gauche : elle indique le type de message.
+	bar := w32.RECT{Left: 0, Top: 0, Right: b.scale(accentBar), Bottom: client.Bottom}
+	accentBrush := w32.CreateSolidBrush(b.accent)
+	w32.FillRect(dc, bar, accentBrush)
+	w32.DeleteObject(uintptr(accentBrush))
+
+	// Filet d'un pixel sur les trois autres cotes, a peine visible.
+	edge := w32.CreateSolidBrush(w32.Blend(background, b.palette.muted, 0.35))
+	thickness := int32(1)
+	w32.FillRect(dc, w32.RECT{Left: bar.Right, Top: 0, Right: client.Right, Bottom: thickness}, edge)
+	w32.FillRect(dc, w32.RECT{Left: client.Right - thickness, Top: 0, Right: client.Right, Bottom: client.Bottom}, edge)
+	w32.FillRect(dc, w32.RECT{Left: bar.Right, Top: client.Bottom - thickness, Right: client.Right, Bottom: client.Bottom}, edge)
+	w32.DeleteObject(uintptr(edge))
+
 	w32.SetBkTransparent(dc)
+	left := b.scale(accentBar) + b.scale(bubblePadding)
 
-	padding := b.scale(bubblePadding)
-
-	// Titre, avec une pastille de couleur en guise d'icone.
-	titleRect := w32.RECT{
-		Left: inside.Left + padding, Top: inside.Top + b.scale(6),
-		Right: b.crossRect.Left - b.scale(4), Bottom: inside.Top + b.scale(headerHeight),
-	}
+	// Titre.
 	previous := w32.SelectObject(dc, uintptr(b.titleFont))
 	w32.SetTextColor(dc, b.palette.title)
-	w32.DrawText(dc, b.title, &titleRect, w32.DT_LEFT|w32.DT_SINGLELINE|w32.DT_NOPREFIX)
+	titleRect := w32.RECT{
+		Left: left, Top: 0, Right: b.crossRect.Left - b.scale(4), Bottom: b.scale(headerHeight),
+	}
+	w32.DrawText(dc, b.title, &titleRect, w32.DT_LEFT|w32.DT_VCENTER|w32.DT_SINGLELINE|w32.DT_NOPREFIX)
 
-	// Croix de fermeture.
+	// Croix de fermeture, plus claire au survol.
 	w32.SelectObject(dc, uintptr(b.smallFont))
-	w32.SetTextColor(dc, b.palette.muted)
+	crossColor := b.palette.muted
+	if b.hovered == hoverCross {
+		crossColor = b.palette.title
+	}
+	w32.SetTextColor(dc, crossColor)
 	cross := b.crossRect
 	w32.DrawText(dc, "✕", &cross, w32.DT_CENTER|w32.DT_VCENTER|w32.DT_SINGLELINE)
 
-	// Note du bas.
+	// Note discrete en bas a gauche.
+	w32.SetTextColor(dc, b.palette.muted)
 	hint := w32.RECT{
-		Left: inside.Left + padding, Top: b.copyRect.Top,
-		Right: b.copyRect.Left, Bottom: b.copyRect.Bottom,
+		Left: left, Top: b.copyRect.Top, Right: b.copyRect.Left, Bottom: b.copyRect.Bottom,
 	}
 	w32.DrawText(dc, b.hint, &hint, w32.DT_LEFT|w32.DT_VCENTER|w32.DT_SINGLELINE|w32.DT_NOPREFIX)
 
-	b.paintButton(dc, b.copyRect, "Copier")
-	b.paintButton(dc, b.closeRect, "Fermer")
+	// Boutons : « Copier » est l'action principale, dans la couleur du message.
+	b.paintButton(dc, b.copyRect, "Copier", b.accent, b.palette.white, b.hovered == hoverCopy)
+	b.paintButton(dc, b.closeRect, "Fermer", b.palette.button, b.palette.buttonText, b.hovered == hoverClose)
 	w32.SelectObject(dc, previous)
 }
 
-func (b *bubbleWindow) paintButton(dc w32.HDC, rect w32.RECT, label string) {
-	brush := w32.CreateSolidBrush(b.palette.button)
-	w32.FillRect(dc, rect, brush)
-	w32.DeleteObject(uintptr(brush))
+func (b *bubbleWindow) paintButton(dc w32.HDC, rect w32.RECT, label string, fill, textColor uintptr, hovered bool) {
+	if hovered {
+		fill = w32.Blend(fill, b.palette.white, 0.16) // legerement eclairci
+	}
+	w32.FillRoundRect(dc, rect, b.scale(buttonRadius), fill, b.palette.background)
 
 	w32.SelectObject(dc, uintptr(b.smallFont))
-	w32.SetTextColor(dc, b.palette.buttonText)
+	w32.SetTextColor(dc, textColor)
 	box := rect
 	w32.DrawText(dc, label, &box, w32.DT_CENTER|w32.DT_VCENTER|w32.DT_SINGLELINE|w32.DT_NOPREFIX)
 }
 
 func inRect(rect w32.RECT, x, y int32) bool {
 	return x >= rect.Left && x < rect.Right && y >= rect.Top && y < rect.Bottom
+}
+
+// hoverAt indique quel element se trouve sous le curseur.
+func (b *bubbleWindow) hoverAt(x, y int32) int {
+	switch {
+	case inRect(b.crossRect, x, y):
+		return hoverCross
+	case inRect(b.copyRect, x, y):
+		return hoverCopy
+	case inRect(b.closeRect, x, y):
+		return hoverClose
+	}
+	return hoverNone
 }
 
 func bubbleWndProc(hwnd, message, wparam, lparam uintptr) uintptr {
@@ -340,17 +395,17 @@ func bubbleWndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		return uintptr(b.background)
 
 	case w32.WM_LBUTTONDOWN:
-		if y < b.scale(headerHeight) && !inRect(b.crossRect, x, y) {
+		if y < b.scale(headerHeight) && b.hoverAt(x, y) == hoverNone {
 			// Deplacement a la souris : Windows s'en charge pour nous.
 			w32.SendMessage(b.hwnd, w32.WM_NCLBUTTONDOWN, w32.HTCAPTION, 0)
 		}
 		return 0
 
 	case w32.WM_LBUTTONUP:
-		switch {
-		case inRect(b.crossRect, x, y), inRect(b.closeRect, x, y):
+		switch b.hoverAt(x, y) {
+		case hoverCross, hoverClose:
 			b.hide()
-		case inRect(b.copyRect, x, y):
+		case hoverCopy:
 			if err := setClipboardText(b.text); err == nil {
 				b.hint = "Copie dans le presse-papiers"
 				w32.InvalidateRect(b.hwnd, false)
@@ -359,15 +414,26 @@ func bubbleWndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		return 0
 
 	case w32.WM_MOUSEMOVE:
-		if !b.hovered {
-			b.hovered = true
+		if !b.mouseInside {
+			b.mouseInside = true
 			w32.KillTimer(b.hwnd, timerClose) // la bulle attend tant qu'on la survole
 			w32.TrackMouseLeave(b.hwnd)
+		}
+		if hovered := b.hoverAt(x, y); hovered != b.hovered {
+			b.hovered = hovered
+			w32.InvalidateRect(b.hwnd, false)
+		}
+		if b.hovered != hoverNone {
+			w32.SetCursor(w32.LoadCursor(w32.IDC_HAND))
 		}
 		return 0
 
 	case w32.WM_MOUSELEAVE:
-		b.hovered = false
+		b.mouseInside = false
+		if b.hovered != hoverNone {
+			b.hovered = hoverNone
+			w32.InvalidateRect(b.hwnd, false)
+		}
 		b.startCloseTimer()
 		return 0
 
@@ -377,12 +443,20 @@ func bubbleWndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		}
 		return 0
 
+	case w32.WM_DPICHANGED:
+		// L'utilisateur a change d'ecran : on refait les polices a la bonne taille.
+		b.dpi = int32(wparam & 0xFFFF)
+		b.makeFonts()
+		b.layout()
+		w32.InvalidateRect(b.hwnd, true)
+		return 0
+
 	case w32.WM_TIMER:
 		switch wparam {
 		case timerClose:
 			b.hide()
 		case timerFade:
-			b.alpha += 45
+			b.alpha += 51
 			if b.alpha >= 255 {
 				b.alpha = 255
 				w32.KillTimer(b.hwnd, timerFade)

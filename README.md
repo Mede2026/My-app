@@ -6,7 +6,7 @@ Vous sélectionnez du texte, vous faites `Ctrl+Alt+E` : le texte est remplacé p
 message chiffré. Vous sélectionnez ce message, vous faites `Ctrl+Alt+D` : une petite
 **bulle** apparaît près de la souris et affiche le texte d'origine.
 
-Un seul fichier `CryptoBulle.exe` de **2,85 Mo**. Rien à installer.
+Un seul fichier `CryptoBulle.exe` de **2,86 Mo**. Rien à installer.
 
 ---
 
@@ -53,7 +53,7 @@ qui représentaient l'essentiel du poids.
 
 | | Version Python | Version Go |
 | --- | --- | --- |
-| À livrer | un dossier avec l'interpréteur et Tcl/Tk | un seul `.exe` de 2,85 Mo |
+| À livrer | un dossier avec l'interpréteur et Tcl/Tk | un seul `.exe` de 2,86 Mo |
 | À installer sur le poste | rien, mais tout était embarqué | rien |
 | Chiffrement d'une phrase | 230 µs | **2,0 µs** |
 | Déchiffrement | 10 µs | **1,3 µs** |
@@ -79,6 +79,38 @@ justement d'avoir tout dans un seul programme.
 4. Au repos, le programme **dort vraiment** : `GetMessage` rend la main à Windows,
    qui ne réveille l'application que pour les deux raccourcis déclarés et les clics
    sur l'icône. Aucune boucle d'attente, aucun réveil périodique.
+
+## Une interface qui ne fait pas datée
+
+Une application Win32 a l'air vieille pour deux raisons précises, corrigées ici.
+
+**Le manifeste.** Sans lui, Windows dessine les boutons et les champs de saisie
+comme en 2000, gris et carrés. Le fichier `cmd/cryptobulle/app.manifest`, intégré
+à l'exécutable, réclame les *common controls* version 6 : les contrôles prennent
+alors l'apparence native de Windows 10 et 11.
+
+**La densité de pixels.** Le même manifeste déclare l'application *per monitor v2*,
+c'est-à-dire capable de se redimensionner elle-même écran par écran. Sans cela,
+Windows agrandit l'image après coup et tout devient flou sur un écran haute
+définition. Chaque fenêtre lit sa densité réelle, refait ses polices à la bonne
+taille et se replace quand on la déplace vers un autre écran.
+
+La bulle, elle, est entièrement dessinée :
+
+- **Coins arrondis** confiés à Windows 11 (`DwmSetWindowAttribute`), donc lissés par
+  le système. Sur Windows 10, ils restent droits, ce qui est le style de ce système.
+- **Ombre portée** légère, la même que celle des menus.
+- **Boutons aux bords lisses**, avec un effet au survol. GDI+ aurait pu les dessiner,
+  mais ses fonctions attendent des nombres à virgule, que Go ne sait pas transmettre
+  à une DLL sur processeur 64 bits. Ils sont donc peints à la main dans une petite
+  image en mémoire : pour chaque pixel, on calcule quelle part est à l'intérieur de
+  la forme, avec seize échantillons. C'est ce qui remplace l'anticrénelage.
+- **Bande de couleur** à gauche : bleu pour une information, vert pour une réussite,
+  rouge pour une erreur.
+- Texte en Segoe UI, rendu par ClearType, le lissage de police de Windows.
+
+Tout cela n'ajoute que 10 Ko à l'exécutable : le dessin utilise des fonctions déjà
+présentes dans le système.
 
 ## Le format « MC1 », propre à l'application
 
@@ -143,17 +175,18 @@ conservés.
 - Windows uniquement. Raccourcis globaux, DPAPI, icône de notification et démarrage
   automatique passent tous par des fonctions propres à Windows.
 - L'interface est dessinée directement avec l'API Windows, sans bibliothèque
-  graphique. C'est ce qui garde l'exécutable petit, mais chaque écran est du code
+  graphique. C'est ce qui garde l'exécutable à 2,86 Mo au lieu des 150 Mo et plus
+  d'une application à base de navigateur intégré, mais chaque écran est du code
   écrit à la main.
 
 ## Développement
 
 ```
-cmd/cryptobulle/      point d'entrée et icône de l'exécutable
+cmd/cryptobulle/      point d'entrée, manifeste et icône de l'exécutable
 internal/crypto/      format MC1 : scrypt, AES-GCM, jetons, détection
 internal/hotkey/      lecture des combinaisons (« ctrl+alt+d »)
 internal/config/      réglages JSON, phrase secrète protégée par DPAPI
-internal/w32/         appels aux API de Windows
+internal/w32/         appels aux API de Windows, dessin lissé
 internal/app/         boucle de messages, bulle, réglages, icône, actions
 scripts/              build.sh (compilation croisée), make_icon.py (icône)
 ```
