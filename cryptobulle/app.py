@@ -1,9 +1,14 @@
 """Chef d'orchestre : raccourcis, presse-papiers, bulles et icone de notification.
 
-Regle importante : Tkinter n'accepte d'etre pilote que depuis le fil principal.
-Les raccourcis clavier et l'icone de notification tournent, eux, dans d'autres
-fils d'execution. Ils passent donc par :meth:`CryptoBulleApp.post`, qui depose
-la tache dans une file lue par le fil principal.
+Trois fils d'execution seulement :
+
+- le fil principal, qui appartient a Tkinter (toute l'interface) ;
+- le fil « winui », qui heberge la boucle de messages Windows (raccourcis et
+  icone), endormi tant qu'il ne se passe rien ;
+- un fil temporaire par action, pour ne jamais bloquer les deux autres.
+
+Les echanges entre fils passent par :meth:`CryptoBulleApp.post`, qui depose la
+tache dans une file lue par le fil principal.
 """
 
 from __future__ import annotations
@@ -14,20 +19,16 @@ import sys
 import threading
 import tkinter as tk
 from tkinter import messagebox
-from typing import TYPE_CHECKING
 
-from . import APP_NAME
+from . import APP_NAME, APP_VERSION
 from .bubble import BubbleManager
 from .clipboard import ClipboardError, get_clipboard, paste_text, read_selection, set_clipboard
 from .config import Config
-from .crypto import CryptoError, decrypt, encrypt, find_token, looks_encrypted
-from .hotkeys import HotkeyError, HotkeyManager
-from .ui_settings import SettingsWindow
-
-if TYPE_CHECKING:  # uniquement pour les outils d'analyse
-    from .tray import TrayIcon
+from .crypto import CryptoError, decrypt, derive_key, encrypt, find_token, looks_encrypted
+from .hotkeys import HotkeyError, pretty
 
 MUTEX_NAME = "Global\\CryptoBulle-single-instance"
+ERROR_ALREADY_EXISTS = 183
 
 
 def _claim_single_instance() -> bool:
@@ -36,7 +37,7 @@ def _claim_single_instance() -> bool:
         return True
     kernel32 = ctypes.windll.kernel32
     kernel32.CreateMutexW(None, False, MUTEX_NAME)
-    return kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+    return kernel32.GetLastError() != ERROR_ALREADY_EXISTS
 
 
 class CryptoBulleApp:
@@ -46,9 +47,8 @@ class CryptoBulleApp:
         self.root.withdraw()
         self.root.title(APP_NAME)
         self.bubbles = BubbleManager(self.root, self.config.theme)
-        self.hotkeys = HotkeyManager()
-        self.tray: "TrayIcon | None" = None
-        self.settings: SettingsWindow | None = None
+        self.windows = None  # WindowsUI, cree au demarrage
+        self.settings = None  # SettingsWindow, creee a la demande
         self._tasks: queue.Queue = queue.Queue()
         self._busy = threading.Lock()
         self._stopping = False
@@ -69,7 +69,9 @@ class CryptoBulleApp:
             except Exception as exc:  # une action ratee ne doit pas tuer l'appli
                 self._show("Erreur", str(exc), "error")
         if not self._stopping:
-            self.root.after(40, self._pump)
+            # 50 ms : assez rapide pour que la bulle paraisse immediate, assez
+            # lent pour que le processeur reste pratiquement inactif au repos.
+            self.root.after(50, self._pump)
 
     def _show(self, title: str, body: str, kind: str = "info", seconds: int | None = None) -> None:
         self.bubbles.theme = self.config.theme
@@ -85,6 +87,8 @@ class CryptoBulleApp:
         def worker() -> None:
             try:
                 action()
+            except Exception as exc:  # filet de securite
+                self.post(self._show, "Erreur", str(exc), "error")
             finally:
                 self._busy.release()
 
@@ -104,7 +108,7 @@ class CryptoBulleApp:
             self.post(self._show, "Erreur", str(exc), "error")
             return
 
-        if self.config.restore_clipboard:
+        if self.config.restore_clipboard and previous:
             try:
                 set_clipboard(previous)
             except ClipboardError:
@@ -147,15 +151,12 @@ class CryptoBulleApp:
             return
         if looks_encrypted(text):
             self.post(
-                self._show,
-                "Deja chiffre",
-                "Ce texte est deja un message CryptoBulle.",
-                "error",
+                self._show, "Deja chiffre", "Ce texte est deja un message CryptoBulle.", "error"
             )
             return
 
         try:
-            token = encrypt(text, self.config.passphrase)
+            token = encrypt(text, self.config.passphrase, self.config.salt())
         except CryptoError as exc:
             self.post(self._show, "Chiffrement impossible", str(exc), "error")
             return
@@ -185,8 +186,23 @@ class CryptoBulleApp:
         self.post(self.open_settings)
         return False
 
+    def warm_up(self) -> None:
+        """Calcule la cle a l'avance pour que le premier raccourci soit immediat.
+
+        scrypt prend une cinquantaine de millisecondes ; autant les depenser au
+        demarrage plutot qu'au moment ou l'utilisateur attend son texte.
+        """
+        if not self.config.has_passphrase():
+            return
+        try:
+            derive_key(self.config.passphrase, self.config.salt())
+        except Exception:
+            pass
+
     # --- reglages --------------------------------------------------------
     def open_settings(self) -> None:
+        from .ui_settings import SettingsWindow  # charge Tkinter/ttk a la demande
+
         if self.settings is not None and self.settings.window.winfo_exists():
             self.settings.window.deiconify()
             self.settings.window.lift()
@@ -197,11 +213,12 @@ class CryptoBulleApp:
     def apply_config(self) -> str | None:
         """Reactive les raccourcis apres un changement. Renvoie l'erreur eventuelle."""
         self.bubbles.theme = self.config.theme
+        threading.Thread(target=self.warm_up, daemon=True).start()
         try:
-            self.hotkeys.register(
+            self.windows.set_hotkey(
                 "decrypt", self.config.hotkey_decrypt, lambda: self.trigger(self.action_decrypt)
             )
-            self.hotkeys.register(
+            self.windows.set_hotkey(
                 "encrypt", self.config.hotkey_encrypt, lambda: self.trigger(self.action_encrypt)
             )
         except HotkeyError as exc:
@@ -210,10 +227,8 @@ class CryptoBulleApp:
 
     def quit(self) -> None:
         self._stopping = True
-        self.hotkeys.unregister_all()
-        if self.tray is not None:
-            self.tray.stop()
-        self.bubbles.close()
+        if self.windows is not None:
+            self.windows.stop()
         try:
             self.root.destroy()
         except tk.TclError:
@@ -221,33 +236,40 @@ class CryptoBulleApp:
 
     # --- demarrage -------------------------------------------------------
     def run(self) -> int:
-        from .tray import TrayIcon  # importe ici pour garder les tests legers
+        from .winui import WindowsUI
+
+        self.windows = WindowsUI(
+            app_name=APP_NAME,
+            tooltip=f"{APP_NAME} {APP_VERSION}",
+            menu=[
+                ("Reglages...", lambda: self.post(self.open_settings)),
+                None,
+                ("Chiffrer la selection", lambda: self.trigger(self.action_encrypt)),
+                ("Dechiffrer la selection", lambda: self.trigger(self.action_decrypt)),
+                None,
+                ("Quitter", lambda: self.post(self.quit)),
+            ],
+            on_default=lambda: self.post(self.open_settings),
+        )
+        self.windows.start()
 
         error = self.apply_config()
         if error:
             messagebox.showerror(
-                APP_NAME,
-                f"{error}\n\nChoisissez d'autres raccourcis dans les reglages.",
+                APP_NAME, f"{error}\n\nChoisissez d'autres raccourcis dans les reglages."
             )
 
-        self.tray = TrayIcon(
-            on_settings=lambda: self.post(self.open_settings),
-            on_encrypt=lambda: self.trigger(self.action_encrypt),
-            on_decrypt=lambda: self.trigger(self.action_decrypt),
-            on_quit=lambda: self.post(self.quit),
-        )
-        self.tray.start()
-
-        self.root.after(40, self._pump)
+        self.root.after(50, self._pump)
+        self.root.after(60, self.bubbles.prepare)  # fenetre prete avant le besoin
         if not self.config.has_passphrase():
-            self.root.after(200, self.open_settings)
+            self.root.after(150, self.open_settings)
         else:
             self.root.after(
-                300,
+                250,
                 lambda: self._show(
                     f"{APP_NAME} est actif",
-                    f"{self.config.hotkey_encrypt} : chiffrer la selection\n"
-                    f"{self.config.hotkey_decrypt} : dechiffrer la selection",
+                    f"{pretty(self.config.hotkey_encrypt)} : chiffrer la selection\n"
+                    f"{pretty(self.config.hotkey_decrypt)} : dechiffrer la selection",
                     "info",
                     6,
                 ),
@@ -257,16 +279,16 @@ class CryptoBulleApp:
 
 
 def main() -> int:
+    if sys.platform != "win32":
+        print("CryptoBulle fonctionne uniquement sous Windows.", file=sys.stderr)
+        return 1
     if not _claim_single_instance():
         messagebox.showinfo(APP_NAME, f"{APP_NAME} est deja lance (icone pres de l'horloge).")
         return 0
-    try:
-        import keyboard
 
-        del keyboard  # on verifie seulement qu'il se charge
-    except Exception as exc:
-        messagebox.showerror(APP_NAME, f"Le module clavier n'a pas pu demarrer :\n{exc}")
-        return 1
+    from .winapi import enable_dpi_awareness
+
+    enable_dpi_awareness()  # a faire avant la creation de la premiere fenetre
     return CryptoBulleApp().run()
 
 

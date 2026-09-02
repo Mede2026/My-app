@@ -6,6 +6,7 @@ Ailleurs : ~/.config/cryptobulle/config.json (pratique pour les tests)
 
 from __future__ import annotations
 
+import binascii
 import json
 import os
 import sys
@@ -49,6 +50,9 @@ class Config:
     # Remettre l'ancien contenu du presse-papiers apres coup.
     restore_clipboard: bool = True
     launch_at_startup: bool = False
+    # Sel personnel, tire au hasard une fois : il permet de garder la cle en
+    # cache et de rendre le chiffrement instantane (voir crypto.encrypt).
+    key_salt: str = ""
     theme: str = "sombre"  # "sombre" ou "clair"
 
     # --- phrase secrete -------------------------------------------------
@@ -62,6 +66,20 @@ class Config:
 
     def has_passphrase(self) -> bool:
         return bool(self.passphrase_sealed)
+
+    # --- sel personnel ---------------------------------------------------
+    def salt(self) -> bytes:
+        """Sel de l'utilisateur, cree au premier appel puis conserve."""
+        from .crypto import SALT_LEN, new_salt
+
+        try:
+            raw = binascii.unhexlify(self.key_salt)
+        except (binascii.Error, ValueError):
+            raw = b""
+        if len(raw) != SALT_LEN:
+            raw = new_salt()
+            self.key_salt = raw.hex()
+        return raw
 
     # --- disque ---------------------------------------------------------
     @classmethod

@@ -4,6 +4,8 @@ import unittest
 
 from cryptobulle.crypto import (
     PREFIX,
+    SALT_LEN,
+    new_salt,
     CryptoError,
     _APP_ALPHABET,
     _STD_ALPHABET,
@@ -73,6 +75,26 @@ class TestRoundTrip(unittest.TestCase):
             decrypt("bonjour tout le monde", PASS)
         with self.assertRaises(CryptoError):
             decrypt(PREFIX + "trop-court", PASS)
+
+
+class TestPersonalSalt(unittest.TestCase):
+    """Le sel personnel accelere le chiffrement sans affaiblir le resultat."""
+
+    def test_round_trip_with_fixed_salt(self):
+        salt = new_salt()
+        self.assertEqual(len(salt), SALT_LEN)
+        token = encrypt("message rapide", PASS, salt)
+        self.assertEqual(decrypt(token, PASS), "message rapide")
+
+    def test_same_salt_still_gives_different_tokens(self):
+        salt = new_salt()
+        first = encrypt("meme texte", PASS, salt)
+        second = encrypt("meme texte", PASS, salt)
+        self.assertNotEqual(first, second)  # le nonce change a chaque message
+
+    def test_invalid_salt_is_replaced(self):
+        token = encrypt("texte", PASS, b"trop court")
+        self.assertEqual(decrypt(token, PASS), "texte")
 
 
 class TestFindToken(unittest.TestCase):

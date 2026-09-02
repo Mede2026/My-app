@@ -62,9 +62,11 @@ class Bubble:
         kind: str = "info",
         seconds: int = 12,
         theme: str = "sombre",
+        show_now: bool = True,
     ) -> None:
         self.master = master
         self.body = body
+        self.kind = kind
         self.seconds = seconds
         self.palette = THEMES.get(theme, THEMES["sombre"])
         accent = ACCENTS.get(kind, ACCENTS["info"])
@@ -87,14 +89,15 @@ class Bubble:
 
         header = tk.Frame(frame, background=self.palette.background)
         header.pack(fill="x", padx=12, pady=(10, 4))
-        tk.Label(
+        self.title_label = tk.Label(
             header,
             text=f"{ICONS.get(kind, '')}  {title}",
             background=self.palette.background,
             foreground=self.palette.title,
             font=("Segoe UI Semibold", 10),
             anchor="w",
-        ).pack(side="left")
+        )
+        self.title_label.pack(side="left")
         close = tk.Label(
             header,
             text="✕",
@@ -150,9 +153,10 @@ class Bubble:
         self.window.bind("<Escape>", lambda _event: self.close())
         self.window.bind("<Control-c>", lambda _event: self._copy())
 
-        self._place_near_pointer()
-        self._fade_in()
-        self._start_timer()
+        if show_now:
+            self._place_near_pointer()
+            self._fade_in()
+            self._start_timer()
 
     # --- apparence ------------------------------------------------------
     def _button(self, parent: tk.Widget, label: str, command) -> tk.Button:
@@ -196,6 +200,39 @@ class Bubble:
         else:
             self.window.focus_force()
 
+    def update_content(self, title: str, body: str, kind: str, seconds: int) -> None:
+        """Reutilise la fenetre existante : affichage instantane, sans clignotement."""
+        self._pause_timer()
+        self.body, self.kind, self.seconds = body, kind, seconds
+        accent = ACCENTS.get(kind, ACCENTS["info"])
+        self.window.configure(background=accent)
+        self.text.configure(selectbackground=accent)
+        self.title_label.configure(text=f"{ICONS.get(kind, '')}  {title}")
+
+        lines = body.count("\n") + 1
+        longest = max((len(line) for line in body.split("\n")), default=1)
+        self.text.configure(state="normal", height=max(1, min(MAX_TEXT_LINES, lines + longest // 60)))
+        self.text.delete("1.0", "end")
+        self.text.insert("1.0", body)
+        self.text.configure(state="disabled")
+        self.hint.configure(text="Echap pour fermer")
+
+        self._place_near_pointer()
+        self.window.deiconify()
+        try:
+            self.window.attributes("-alpha", 1.0)
+        except tk.TclError:
+            pass
+        self.window.lift()
+        self.window.focus_force()
+        self._start_timer()
+
+    def alive(self) -> bool:
+        try:
+            return bool(self.window.winfo_exists())
+        except tk.TclError:
+            return False
+
     # --- comportement ---------------------------------------------------
     def _copy(self) -> None:
         self.master.clipboard_clear()
@@ -227,6 +264,14 @@ class Bubble:
             self._start_timer()
 
     def close(self) -> None:
+        """Masque la bulle. La fenetre reste prete pour le prochain affichage."""
+        self._pause_timer()
+        try:
+            self.window.withdraw()
+        except tk.TclError:
+            pass
+
+    def destroy(self) -> None:
         self._pause_timer()
         try:
             self.window.destroy()
@@ -235,20 +280,40 @@ class Bubble:
 
 
 class BubbleManager:
-    """Garde une seule bulle a l'ecran a la fois."""
+    """Garde une seule bulle, construite une fois puis reutilisee.
+
+    Creer une fenetre Tkinter coute quelques dizaines de millisecondes ; la
+    reutiliser en coute zero. La bulle apparait donc instantanement des le
+    deuxieme raccourci.
+    """
 
     def __init__(self, root: tk.Tk, theme: str = "sombre") -> None:
         self.root = root
         self.theme = theme
         self._current: Bubble | None = None
+        self._built_theme: str | None = None
 
     def show(self, title: str, body: str, kind: str = "info", seconds: int = 12) -> Bubble:
+        reusable = (
+            self._current is not None
+            and self._current.alive()
+            and self._built_theme == self.theme
+        )
+        if reusable:
+            self._current.update_content(title, body, kind, seconds)
+            return self._current
         if self._current is not None:
-            self._current.close()
+            self._current.destroy()
         self._current = Bubble(self.root, title, body, kind, seconds, self.theme)
+        self._built_theme = self.theme
         return self._current
+
+    def prepare(self) -> None:
+        """Construit la fenetre a l'avance, hors du chemin critique."""
+        if self._current is None or not self._current.alive():
+            self._current = Bubble(self.root, "", "", "info", 0, self.theme, show_now=False)
+            self._built_theme = self.theme
 
     def close(self) -> None:
         if self._current is not None:
             self._current.close()
-            self._current = None

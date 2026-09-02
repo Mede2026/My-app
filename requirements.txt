@@ -1,5 +1,3 @@
-cryptography>=42.0
-keyboard>=0.13.5
-pyperclip>=1.8.2
-pystray>=0.19.5
-pillow>=10.0
+# CryptoBulle n'a AUCUNE dependance a l'execution.
+# Tout passe par la bibliotheque standard de Python (tkinter, hashlib, ctypes)
+# et par les API de Windows (CNG pour AES-GCM, RegisterHotKey, Shell_NotifyIcon).

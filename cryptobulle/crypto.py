@@ -24,8 +24,9 @@ import os
 import re
 from functools import lru_cache
 
-from cryptography.exceptions import InvalidTag
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from .aesgcm import AuthenticationError, CryptoBackendError
+from .aesgcm import decrypt as aead_decrypt
+from .aesgcm import encrypt as aead_encrypt
 
 MAGIC = b"MC1"
 VERSION = 1
@@ -76,7 +77,7 @@ def _decode(text: str) -> bytes:
 
 
 @lru_cache(maxsize=64)
-def _derive_key(passphrase: str, salt: bytes) -> bytes:
+def derive_key(passphrase: str, salt: bytes) -> bytes:
     """Derive une cle AES-256 a partir de la phrase secrete et du sel.
 
     Le resultat est mis en cache : dechiffrer plusieurs fois le meme message
@@ -94,19 +95,35 @@ def _derive_key(passphrase: str, salt: bytes) -> bytes:
     )
 
 
-def encrypt(plaintext: str, passphrase: str) -> str:
-    """Chiffre `plaintext` et renvoie un jeton `MC1~...`."""
+def new_salt() -> bytes:
+    """Nouveau sel aleatoire (a garder dans les reglages, voir plus bas)."""
+    return os.urandom(SALT_LEN)
+
+
+def encrypt(plaintext: str, passphrase: str, salt: bytes | None = None) -> str:
+    """Chiffre `plaintext` et renvoie un jeton `MC1~...`.
+
+    `salt` peut etre le sel personnel de l'utilisateur, range dans ses reglages.
+    Comme la cle correspondante est deja calculee et gardee en cache, le
+    chiffrement devient instantane au lieu de couter ~50 ms de scrypt. La
+    securite ne change pas : c'est le **nonce**, tire au hasard a chaque
+    message, qui garantit que deux chiffrements ne se ressemblent jamais.
+    """
     if not passphrase:
         raise CryptoError("Aucune phrase secrete n'est configuree.")
     if plaintext == "":
         raise CryptoError("Il n'y a rien a chiffrer.")
 
-    salt = os.urandom(SALT_LEN)
+    if salt is None or len(salt) != SALT_LEN:
+        salt = new_salt()
     nonce = os.urandom(NONCE_LEN)
     header = MAGIC + bytes([VERSION]) + salt + nonce
-    key = _derive_key(passphrase, salt)
+    key = derive_key(passphrase, salt)
     # Le header sert de donnees associees : il est authentifie, pas chiffre.
-    ciphertext = AESGCM(key).encrypt(nonce, plaintext.encode("utf-8"), header)
+    try:
+        ciphertext = aead_encrypt(key, nonce, plaintext.encode("utf-8"), header)
+    except CryptoBackendError as exc:
+        raise CryptoError(str(exc)) from exc
     return PREFIX + _encode(header + ciphertext)
 
 
@@ -128,13 +145,15 @@ def decrypt(token: str, passphrase: str) -> str:
     header = raw[:HEADER_LEN]
     salt = raw[4:4 + SALT_LEN]
     nonce = raw[4 + SALT_LEN:HEADER_LEN]
-    key = _derive_key(passphrase, salt)
+    key = derive_key(passphrase, salt)
     try:
-        plaintext = AESGCM(key).decrypt(nonce, raw[HEADER_LEN:], header)
-    except InvalidTag as exc:
+        plaintext = aead_decrypt(key, nonce, raw[HEADER_LEN:], header)
+    except AuthenticationError as exc:
         raise CryptoError(
             "Dechiffrement impossible : phrase secrete differente ou message modifie."
         ) from exc
+    except CryptoBackendError as exc:
+        raise CryptoError(str(exc)) from exc
     return plaintext.decode("utf-8", errors="replace")
 
 

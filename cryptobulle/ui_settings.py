@@ -2,15 +2,24 @@
 
 from __future__ import annotations
 
-import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
 from . import APP_NAME, APP_VERSION, startup
 from .config import Config
 from .crypto import CryptoError, decrypt, encrypt, find_token
-from .hotkeys import HotkeyError, normalize
+from .hotkeys import HotkeyError, normalize, pretty
 from .secretstore import is_secure
+
+# Touches Tkinter -> noms compris par cryptobulle.hotkeys
+_KEYSYM_ALIASES = {
+    "Return": "enter", "BackSpace": "backspace", "Escape": "escape", "space": "space",
+    "Prior": "pageup", "Next": "pagedown", "Delete": "delete", "Insert": "insert",
+    "Home": "home", "End": "end", "Left": "left", "Right": "right", "Up": "up",
+    "Down": "down", "Tab": "tab", "plus": "plus", "minus": "minus",
+    "comma": "comma", "period": "period",
+}
+_MODIFIER_KEYSYMS = ("Control", "Alt", "Shift", "Win", "Super", "Meta")
 
 
 class SettingsWindow:
@@ -111,11 +120,12 @@ class SettingsWindow:
 
     def _hotkey_row(self, parent: ttk.LabelFrame, row: int, label: str, var: tk.StringVar) -> None:
         ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=3)
-        entry = ttk.Entry(parent, textvariable=var, width=18)
-        entry.grid(row=row, column=1, padx=(10, 6), pady=3)
-        ttk.Button(
-            parent, text="Enregistrer...", command=lambda: self._capture(var, entry)
-        ).grid(row=row, column=2, pady=3)
+        ttk.Entry(parent, textvariable=var, width=18).grid(
+            row=row, column=1, padx=(10, 6), pady=3
+        )
+        ttk.Button(parent, text="Enregistrer...", command=lambda: self._capture(var)).grid(
+            row=row, column=2, pady=3
+        )
         parent.columnconfigure(0, weight=1)
 
     def _tab_workshop(self, parent: ttk.Notebook) -> ttk.Frame:
@@ -137,16 +147,24 @@ class SettingsWindow:
 
     def _tab_about(self, parent: ttk.Notebook) -> ttk.Frame:
         tab = ttk.Frame(parent, padding=12)
+        try:
+            from .aesgcm import backend_name
+
+            engine = backend_name()
+        except Exception as exc:  # pragma: no cover - depend de la machine
+            engine = f"indisponible ({exc})"
         text = (
             f"{APP_NAME} {APP_VERSION}\n\n"
             "1. Selectionnez du texte n'importe ou dans Windows.\n"
-            f"2. {self.config.hotkey_encrypt} : le texte est chiffre puis colle a la place.\n"
-            f"3. {self.config.hotkey_decrypt} : la bulle affiche le texte d'origine.\n\n"
+            f"2. {pretty(self.config.hotkey_encrypt)} : le texte est chiffre puis colle a la place.\n"
+            f"3. {pretty(self.config.hotkey_decrypt)} : la bulle affiche le texte d'origine.\n\n"
             "Chiffrement : AES-256-GCM, cle derivee par scrypt a partir de votre\n"
             "phrase secrete et d'une constante propre a l'application.\n"
             "Le resultat est encode dans un alphabet maison : sans CryptoBulle et\n"
             "sans la bonne phrase secrete, le message reste illisible.\n\n"
-            "L'icone dans la zone de notification donne acces a tout le reste."
+            f"Moteur cryptographique : {engine}\n"
+            "Aucune bibliotheque externe : tout passe par Windows et la\n"
+            "bibliotheque standard de Python."
         )
         ttk.Label(tab, text=text, justify="left").pack(anchor="w")
         return tab
@@ -155,36 +173,59 @@ class SettingsWindow:
     def _toggle_show(self) -> None:
         self.entry_pass.configure(show="" if self.var_show_pass.get() else "•")
 
-    def _capture(self, var: tk.StringVar, entry: ttk.Entry) -> None:
-        """Attend une combinaison de touches et la met dans le champ."""
-        entry.state(["disabled"])
-        previous = var.get()
-        var.set("Appuyez sur les touches...")
+    def _capture(self, var: tk.StringVar) -> None:
+        """Ouvre une petite fenetre et attend une combinaison de touches."""
+        dialog = tk.Toplevel(self.window)
+        dialog.title("Nouveau raccourci")
+        dialog.resizable(False, False)
+        dialog.transient(self.window)
+        ttk.Label(
+            dialog,
+            text="Appuyez sur la combinaison souhaitee\n(au moins Ctrl, Alt, Maj ou Windows).",
+            justify="center",
+            padding=16,
+        ).pack()
+        ttk.Button(dialog, text="Annuler", command=dialog.destroy).pack(pady=(0, 12))
 
-        def worker() -> None:
-            import keyboard
-
-            try:
-                combo = keyboard.read_hotkey(suppress=False)
-            except Exception:
-                combo = previous
-            self.root.after(0, done, combo)
-
-        def done(combo: str) -> None:
+        def on_key(event: tk.Event) -> str:
+            keysym = event.keysym
+            if keysym.startswith(_MODIFIER_KEYSYMS):
+                return "break"
+            token = _KEYSYM_ALIASES.get(keysym, keysym.lower())
+            combo = "+".join(self._pressed_modifiers() + [token])
             try:
                 var.set(normalize(combo))
-            except HotkeyError:
-                var.set(previous)
-            entry.state(["!disabled"])
+            except HotkeyError as exc:
+                messagebox.showerror(APP_NAME, str(exc), parent=dialog)
+                return "break"
+            dialog.destroy()
+            return "break"
 
-        threading.Thread(target=worker, daemon=True).start()
+        dialog.bind("<KeyPress>", on_key)
+        dialog.grab_set()      # la fenetre capte tout le clavier
+        dialog.focus_force()
+
+    @staticmethod
+    def _pressed_modifiers() -> list[str]:
+        """Modificateurs physiquement enfonces, demandes a Windows."""
+        from .winapi import VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT, user32
+
+        pressed = []
+        for name, key in (
+            ("ctrl", VK_CONTROL), ("alt", VK_MENU), ("shift", VK_SHIFT),
+        ):
+            if user32.GetAsyncKeyState(key) & 0x8000:
+                pressed.append(name)
+        if (user32.GetAsyncKeyState(VK_LWIN) | user32.GetAsyncKeyState(VK_RWIN)) & 0x8000:
+            pressed.append("win")
+        return pressed
 
     def _workshop(self, do_encrypt: bool) -> None:
         source = self.workshop_in.get("1.0", "end").strip()
         passphrase = self.var_passphrase.get()
         try:
             if do_encrypt:
-                result = encrypt(source, passphrase)
+                result = encrypt(source, passphrase, self.config.salt())
             else:
                 token = find_token(source)
                 if token is None:
