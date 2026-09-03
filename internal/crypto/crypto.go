@@ -27,20 +27,21 @@ import (
 )
 
 const (
-	// legacyPrefixBlock etait ecrit devant les messages des premieres versions.
-	// Il n'est plus produit, mais reste accepte a la relecture.
-	legacyPrefixBlock = "MC1~"
+	// Prefix annonce un message ordinaire.
+	Prefix = "MC1~"
 	// SaltLen est la taille du sel, en octets.
 	SaltLen = 16
 
-	// magic n'apparait plus que dans les messages des premieres versions.
-	magic     = "MC1"
-	version   = 2
-	nonceLen  = 12
-	keyLen    = 32
-	headerLen = SaltLen + nonceLen
-	// Disposition des messages produits avant le retrait du marqueur.
-	legacyHeaderLen = len(magic) + 1 + SaltLen + nonceLen
+	magic   = "MC1"
+	version = 1
+	// Certaines versions ont brievement produit des messages sans marqueur, avec
+	// le numero de version range dans la partie chiffree. Ils restent lisibles.
+	bareVersion = 2
+	nonceLen    = 12
+	keyLen      = 32
+	headerLen   = len(magic) + 1 + SaltLen + nonceLen
+	// Disposition des messages sans marqueur : ni entete magique, ni version.
+	bareHeaderLen = SaltLen + nonceLen
 
 	// scrypt : environ 16 Mo de memoire et ~50 ms de calcul.
 	scryptN = 1 << 14
@@ -148,6 +149,8 @@ func Encrypt(plaintext, passphrase string, salt []byte) (string, error) {
 	}
 
 	header := make([]byte, 0, headerLen)
+	header = append(header, magic...)
+	header = append(header, version)
 	header = append(header, salt...)
 	header = append(header, nonce...)
 
@@ -155,11 +158,9 @@ func Encrypt(plaintext, passphrase string, salt []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Le sel et le nonce sont authentifies sans etre chiffres ; le numero de
-	// version, lui, voyage dans la partie chiffree pour ne rien laisser
-	// paraitre. Le message commence donc par du hasard pur.
-	sealed := gcm.Seal(nil, nonce, append([]byte{version}, plaintext...), header)
-	return encoding.EncodeToString(append(header, sealed...)), nil
+	// L'entete sert de donnees associees : elle est authentifiee, pas chiffree.
+	sealed := gcm.Seal(nil, nonce, []byte(plaintext), header)
+	return Prefix + encoding.EncodeToString(append(header, sealed...)), nil
 }
 
 // Decrypt relit un texte chiffre, dans l'un ou l'autre des deux formats.
@@ -175,55 +176,48 @@ func decryptBlock(token, passphrase string) (string, error) {
 	if passphrase == "" {
 		return "", ErrNoPassphrase
 	}
-	token = strings.TrimPrefix(strings.TrimSpace(token), legacyPrefixBlock)
-
-	raw, err := encoding.DecodeString(token)
+	raw, err := encoding.DecodeString(strings.TrimPrefix(strings.TrimSpace(token), Prefix))
 	if err != nil {
 		return "", ErrNotAToken
 	}
-	if len(raw) > legacyHeaderLen && string(raw[:len(magic)]) == magic {
-		return decryptLegacyBlock(raw, passphrase)
-	}
-	if len(raw) <= headerLen+tagLen {
-		return "", ErrNotAToken
-	}
 
-	header := raw[:headerLen]
-	salt, nonce := raw[:SaltLen], raw[SaltLen:headerLen]
-
-	gcm, err := newGCM(passphrase, salt)
-	if err != nil {
-		return "", err
+	if len(raw) > headerLen+tagLen && string(raw[:len(magic)]) == magic {
+		return openBlock(raw, passphrase, len(magic)+1, headerLen, false)
 	}
-	opened, err := gcm.Open(nil, nonce, raw[headerLen:], header)
-	if err != nil {
-		return "", ErrWrongKey
+	// Messages sans marqueur produits par une version intermediaire.
+	if len(raw) > bareHeaderLen+tagLen {
+		return openBlock(raw, passphrase, 0, bareHeaderLen, true)
 	}
-	if opened[0] != version {
-		return "", fmt.Errorf("message cree avec une version plus recente (v%d)", opened[0])
-	}
-	return string(opened[1:]), nil
+	return "", ErrNotAToken
 }
 
-// decryptLegacyBlock relit les messages produits avant le retrait du marqueur,
-// dont l'entete voyageait en clair.
-func decryptLegacyBlock(raw []byte, passphrase string) (string, error) {
-	if raw[len(magic)] != 1 {
+// openBlock ouvre une charge utile deja decodee.
+//
+// `saltAt` est la position du sel, `headerEnd` la fin de l'entete authentifiee.
+// Quand `versionInside` est vrai, le numero de version est le premier octet du
+// texte dechiffre plutot qu'un octet de l'entete.
+func openBlock(raw []byte, passphrase string, saltAt, headerEnd int, versionInside bool) (string, error) {
+	if !versionInside && raw[len(magic)] != version {
 		return "", fmt.Errorf("message cree avec une version plus recente (v%d)", raw[len(magic)])
 	}
-	header := raw[:legacyHeaderLen]
-	salt := raw[len(magic)+1 : len(magic)+1+SaltLen]
-	nonce := raw[len(magic)+1+SaltLen : legacyHeaderLen]
+	salt := raw[saltAt : saltAt+SaltLen]
+	nonce := raw[saltAt+SaltLen : headerEnd]
 
 	gcm, err := newGCM(passphrase, salt)
 	if err != nil {
 		return "", err
 	}
-	plaintext, err := gcm.Open(nil, nonce, raw[legacyHeaderLen:], header)
+	opened, err := gcm.Open(nil, nonce, raw[headerEnd:], raw[:headerEnd])
 	if err != nil {
 		return "", ErrWrongKey
 	}
-	return string(plaintext), nil
+	if !versionInside {
+		return string(opened), nil
+	}
+	if len(opened) == 0 || opened[0] != bareVersion {
+		return "", ErrNotAToken
+	}
+	return string(opened[1:]), nil
 }
 
 func newGCM(passphrase string, salt []byte) (cipher.AEAD, error) {
@@ -240,14 +234,23 @@ func newGCM(passphrase string, salt []byte) (cipher.AEAD, error) {
 
 // --- reperage dans un texte -------------------------------------------------
 
-// LooksEncrypted indique si le texte est deja un message CryptoBulle.
+// LooksEncrypted indique si le texte contient deja un message ordinaire.
 //
-// Plus rien ne depasse en clair : la seule facon de le savoir est d'essayer de
-// le relire. Cela sert a ne pas chiffrer deux fois le meme texte.
-func LooksEncrypted(text, passphrase string) bool {
-	if text == "" || passphrase == "" {
+// Aucune cle n'est necessaire : le marqueur et l'entete voyagent encodes, mais
+// non chiffres. Cela sert uniquement a eviter de chiffrer deux fois.
+func LooksEncrypted(text string) bool {
+	if text == "" {
 		return false
 	}
-	_, err := DecryptText(text, passphrase)
-	return err == nil
+	glued := spaces.Replace(text)
+	if strings.Contains(glued, strings.TrimSuffix(Prefix, "~")) {
+		return true
+	}
+	for _, candidate := range blockRunRe.FindAllString(glued, -1) {
+		raw, err := encoding.DecodeString(candidate)
+		if err == nil && len(raw) > headerLen && string(raw[:len(magic)]) == magic {
+			return true
+		}
+	}
+	return false
 }

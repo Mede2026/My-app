@@ -42,7 +42,9 @@ func TestAllerRetour(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Encrypt(%.10q) : %v", message, err)
 		}
-		aucunMarqueur(t, token)
+		if !strings.HasPrefix(token, Prefix) {
+			t.Fatalf("un message ordinaire doit commencer par %q : %.20q", Prefix, token)
+		}
 		got, err := Decrypt(token, pass)
 		if err != nil {
 			t.Fatalf("Decrypt : %v", err)
@@ -94,7 +96,7 @@ func TestLeTexteNApparaitPas(t *testing.T) {
 
 func TestBase64StandardNeDonneRien(t *testing.T) {
 	token, _ := Encrypt("message secret", pass, nil)
-	raw, err := base64.RawURLEncoding.DecodeString(token)
+	raw, err := base64.RawURLEncoding.DecodeString(token[len(Prefix):])
 	if err == nil && len(raw) >= 3 && string(raw[:3]) == magic {
 		t.Fatal("un decodeur base64 standard retrouve l'entete")
 	}
@@ -110,7 +112,7 @@ func TestEntreesInvalides(t *testing.T) {
 	if _, err := Decrypt("bonjour tout le monde", pass); err != ErrNotFound {
 		t.Fatalf("texte ordinaire : %v", err)
 	}
-	if _, err := Decrypt("AAAA", pass); err == nil {
+	if _, err := Decrypt(Prefix+"AAAA", pass); err == nil {
 		t.Fatal("jeton trop court accepte")
 	}
 }
@@ -144,26 +146,16 @@ func TestTexteOrdinaireRefuse(t *testing.T) {
 
 func TestLooksEncrypted(t *testing.T) {
 	token, _ := Encrypt("deja chiffre", pass, nil)
-	if !LooksEncrypted(token, pass) {
+	if !LooksEncrypted(token) {
 		t.Fatal("un message chiffre devrait etre reconnu")
 	}
-	if !LooksEncrypted("voici : "+token, pass) {
+	if !LooksEncrypted("voici : " + token) {
 		t.Fatal("un message chiffre au milieu d'une phrase devrait etre reconnu")
 	}
-	for _, texte := range []string{"", "bonjour", "MC1~court", strings.Repeat("abc", 40)} {
-		if LooksEncrypted(texte, pass) {
+	for _, texte := range []string{"", "bonjour", strings.Repeat("abc", 40)} {
+		if LooksEncrypted(texte) {
 			t.Fatalf("faux positif sur %.20q", texte)
 		}
-	}
-}
-
-func TestAucunDebutReconnaissable(t *testing.T) {
-	// Deux messages du meme texte ne doivent partager aucun debut commun :
-	// sinon, ce debut serait lui-meme un marqueur.
-	first, _ := Encrypt("bonjour", pass, nil)
-	second, _ := Encrypt("bonjour", pass, nil)
-	if first[:4] == second[:4] {
-		t.Fatalf("les messages commencent tous par %q", first[:4])
 	}
 }
 

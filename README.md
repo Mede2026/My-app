@@ -6,9 +6,7 @@ Vous sélectionnez du texte, vous faites `Ctrl+Alt+E` : le texte est remplacé p
 message chiffré. Vous sélectionnez ce message, vous faites `Ctrl+Alt+D` : une petite
 **bulle** apparaît près de la souris et affiche le texte d'origine.
 
-Un seul fichier `CryptoBulle.exe` de **2,90 Mo**. Rien à installer.
-
-Un message chiffré ne commence par rien de reconnaissable: c'est juste du charabia.
+Un seul fichier `CryptoBulle.exe` de **2,91 Mo**. Rien à installer.
 
 ---
 
@@ -103,6 +101,8 @@ c'est le même raccourci que pour les messages ordinaires.
   invisible : chaque ligne se relit indépendamment.
 - Les **emojis** et les caractères rares sont chiffrés eux aussi. Rien ne sort
   jamais en clair.
+- La ligne ne porte **aucun marqueur** : c'est du charabia du premier au dernier
+  caractère.
 - **Échap** ou `Ctrl+Alt+M` éteint le mode.
 - Les raccourcis du système continuent de fonctionner : `Ctrl+S`, `Alt+Tab` et
   compagnie passent sans être touchés. `AltGr` reste une touche d'écriture.
@@ -161,7 +161,7 @@ présentes dans le système.
 Un message chiffré ressemble à ceci :
 
 ```
-sfL1wOwg21rRSVwswO0RJA6sxg0jTGvaWWaR1U-MOtBGZ68luGYa9uXsMBml9kwjV0B-...
+MC1~UZgbA1PclmY3ouGuGGioC9PSHYlNlj04crweWjpP19ZyE9QWdEOvpTIVjURKsQb5...
 ```
 
 Trois couches :
@@ -190,27 +190,24 @@ Un emoji, ou tout caractère absent de la liste, s'écrit en quatre caractères
 masqués : un signal d'échappement, puis son numéro Unicode. C'est le seul endroit
 où un caractère tapé n'en donne pas exactement un.
 
-## Rien qui annonce un message chiffré
+## Marqueur ici, rien là
 
-Aucun préfixe, aucune signature visible, aucun début commun. Deux messages du même
-texte ne se ressemblent pas, et rien ne permet à un lecteur de dire « tiens, du
-CryptoBulle ». Le tirage aléatoire est placé en tête, si bien que les premiers
-caractères changent à chaque fois.
+Les deux modes ne se comportent pas pareil, et c'est voulu.
 
-Comment l'application s'y retrouve, alors ? Elle **essaie**. Sur votre sélection,
-elle repère les suites de caractères plausibles et tente de les relire :
+Un message chiffré avec `Ctrl+Alt+E` commence par **`MC1~`**. Vous le collez dans
+une conversation, on voit tout de suite que c'est un message chiffré, et
+l'application le retrouve dans votre sélection sans hésiter.
 
-- un message ordinaire porte une **signature** interne qui ne peut pas apparaître
-  par hasard ; s'il se déchiffre, c'est le bon ;
-- une ligne tapée en frappe masquée porte **deux caractères de contrôle**, calculés
-  à partir de la clé, qui disent « c'est bien pour moi » sans rien laisser voir.
+Une ligne tapée en **frappe masquée** ne porte **aucun marqueur**. Elle ne doit
+ressembler à rien : personne ne doit deviner ce que vous êtes en train de faire en
+regardant votre écran. Les dix premiers caractères de la ligne portent le tirage
+aléatoire et deux caractères de contrôle, mais ils se lisent comme le reste du
+charabia.
 
-Si vous sélectionnez un texte ordinaire, la bulle dit simplement qu'il n'y a rien à
-déchiffrer. Si le message est bien du CryptoBulle mais que la phrase secrète ne
-correspond pas, elle le dit précisément.
-
-Les messages produits par les versions précédentes, qui commençaient par `MC1~` ou
-`MC2~`, restent lisibles.
+Sans marqueur, comment l'application s'y retrouve ? Elle **essaie** de relire la
+ligne. Les deux caractères de contrôle, calculés à partir de votre clé, lui disent
+si le texte est bien le sien. Sur un texte ordinaire, la bulle répond simplement
+qu'il n'y a rien à déchiffrer.
 
 ### Petit lexique
 

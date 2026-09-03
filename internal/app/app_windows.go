@@ -414,7 +414,7 @@ func (a *App) actionEncrypt() {
 			"Selectionnez d'abord du texte, puis refaites le raccourci.", kindError, -1)
 		return
 	}
-	if crypto.LooksEncrypted(text, cfg.Passphrase()) {
+	if crypto.LooksEncrypted(text) {
 		a.showBubble("Deja chiffre", "Ce texte est deja un message CryptoBulle.", kindError, -1)
 		return
 	}

@@ -180,6 +180,15 @@ func TestReperageDansUneLigne(t *testing.T) {
 	}
 }
 
+// La frappe masquee, elle, ne porte aucun marqueur : c'est tout l'interet.
+func TestFrappeMasqueeSansMarqueur(t *testing.T) {
+	visible := masquer(t, "rendez-vous a 15h", pass)
+	aucunMarqueur(t, visible)
+	if strings.HasPrefix(visible, "MC") {
+		t.Fatalf("la ligne masquee commence par un marqueur : %.20q", visible)
+	}
+}
+
 func TestLesDeuxFormatsCoexistent(t *testing.T) {
 	bloc, err := Encrypt("message ordinaire", pass, nil)
 	if err != nil {

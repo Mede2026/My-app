@@ -5,15 +5,13 @@ import (
 	"strings"
 )
 
-// Reperage d'un texte chiffre dans une selection, sans marqueur visible.
+// Reperage d'un texte chiffre dans une selection.
 //
-// Rien n'annonce plus le debut d'un message : le texte produit n'est qu'une
-// suite de caracteres etranges. Pour le relire, l'application essaie tout
-// simplement de le dechiffrer.
-//
-// Ce n'est pas un pari : un message MC1 porte une entete et une signature qui
-// ne peuvent pas apparaitre par hasard, et un texte tape en frappe masquee
-// porte deux caracteres de controle, invisibles au milieu du charabia.
+// Un message ordinaire s'annonce par « MC1~ » : il est trouve tout de suite.
+// Une ligne tapee en frappe masquee, elle, ne porte aucun marqueur : pour la
+// relire, l'application essaie simplement de la dechiffrer. Ce n'est pas un
+// pari, car deux caracteres de controle, invisibles au milieu du charabia,
+// disent si le texte est bien le sien.
 
 var (
 	// Suites de caracteres pouvant former un message ordinaire.
@@ -51,15 +49,28 @@ func DecryptText(selection, passphrase string) (string, error) {
 		return "", ErrNotAToken
 	}
 
-	// Message ordinaire : les espaces sont retires, car un envoi par courriel
-	// peut avoir coupe le texte en plusieurs morceaux.
 	// Si un message est bien reconnu mais refuse la cle, autant le dire
 	// precisement plutot que de pretendre n'avoir rien trouve.
 	recognized := false
 
+	// Message ordinaire : le marqueur donne le depart. Les espaces sont retires,
+	// car un envoi par courriel peut avoir coupe le texte en plusieurs morceaux.
+	glued := spaces.Replace(selection)
+	if start := strings.Index(glued, Prefix); start >= 0 {
+		if token := blockRunRe.FindString(glued[start+len(Prefix):]); token != "" {
+			plain, err := decryptBlock(token, passphrase)
+			if err == nil {
+				return plain, nil
+			}
+			if err == ErrWrongKey {
+				return "", ErrWrongKey
+			}
+		}
+	}
+
 	// Chaque essai coute une derivation de cle quand le sel est inconnu : on se
 	// limite aux quelques plus longues suites, ou se trouve le vrai message.
-	glued := spaces.Replace(stripLegacyPrefixes(selection))
+	glued = spaces.Replace(stripLegacyPrefixes(selection))
 	for _, candidate := range firstFew(longestFirst(blockRunRe.FindAllString(glued, -1))) {
 		plain, err := decryptBlock(candidate, passphrase)
 		switch err {
@@ -85,10 +96,10 @@ func DecryptText(selection, passphrase string) (string, error) {
 	return "", ErrNotFound
 }
 
-// stripLegacyPrefixes retire les marqueurs des premieres versions, qui
-// commencaient par MC1~ ou MC2~. Les textes deja produits restent lisibles.
+// stripLegacyPrefixes retire les marqueurs, pour que la recherche « a
+// l'aveugle » retrouve aussi les textes qui en portent un.
 func stripLegacyPrefixes(text string) string {
-	text = strings.ReplaceAll(text, legacyPrefixBlock, "")
+	text = strings.ReplaceAll(text, Prefix, "")
 	return strings.ReplaceAll(text, legacyPrefixStream, "")
 }
 
