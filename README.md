@@ -102,6 +102,10 @@ c'est le même raccourci que pour les messages ordinaires.
 - Si vous **changez de champ**, de fenêtre, ou déplacez le curseur, l'application
   repose son en-tête invisible toute seule. Chaque morceau reste donc lisible,
   où qu'il ait été écrit.
+- Dans une **messagerie**, `Entrée` envoie le message et vide le champ :
+  l'application le remarque et repose un en-tête pour le message suivant. Dans un
+  traitement de texte, où `Entrée` saute simplement une ligne, elle continue sans
+  rien ajouter. La différence se lit à la position du curseur.
 - Les **emojis** et les caractères rares sont chiffrés eux aussi. Rien ne sort
   jamais en clair.
 - La ligne ne porte **aucun marqueur** : c'est du charabia du premier au dernier

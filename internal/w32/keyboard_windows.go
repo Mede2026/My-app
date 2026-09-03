@@ -262,15 +262,29 @@ type GUIThreadInfo struct {
 
 var procGetGUIThreadInfo = user32.NewProc("GetGUIThreadInfo")
 
+// TypingPlace decrit ou la frappe atterrit : les fenetres concernees, et la
+// position du curseur de texte quand l'application la publie.
+type TypingPlace struct {
+	Windows [3]HWND
+	Caret   RECT
+	// HasCaret est faux pour les applications qui ne publient pas la position
+	// de leur curseur, ce qui est courant pour celles bâties sur un navigateur.
+	HasCaret bool
+}
+
 // TypingTarget rend l'endroit ou la frappe atterrit actuellement. Comparer deux
 // resultats suffit a savoir si l'utilisateur a change de champ ou de fenetre.
-func TypingTarget() [3]HWND {
+func TypingTarget() TypingPlace {
 	var info GUIThreadInfo
 	info.Size = uint32(unsafe.Sizeof(info))
 	if ok, _, _ := procGetGUIThreadInfo.Call(0, uintptr(unsafe.Pointer(&info))); ok == 0 {
-		return [3]HWND{}
+		return TypingPlace{}
 	}
-	return [3]HWND{info.Active, info.Focus, info.Caret}
+	return TypingPlace{
+		Windows:  [3]HWND{info.Active, info.Focus, info.Caret},
+		Caret:    info.CaretRect,
+		HasCaret: info.Caret != 0,
+	}
 }
 
 // MouseClickedSince indique qu'un bouton de la souris a ete presse depuis le

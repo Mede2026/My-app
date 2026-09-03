@@ -30,8 +30,11 @@ type maskTyping struct {
 	// repartir a zero. Des que l'utilisateur change de champ, de fenetre ou
 	// deplace le curseur, un nouvel en-tete doit etre pose : sans lui, ce qui
 	// suit serait impossible a relire.
-	target       [3]w32.HWND
+	place        w32.TypingPlace
 	forceRestart bool
+	// Entree vient d'etre pressee : reste a savoir si elle a envoye le message,
+	// ce qui vide le champ, ou seulement saute une ligne.
+	enterPending bool
 
 	// Touches dont l'appui a ete avale : leur relachement doit l'etre aussi.
 	swallowed map[uint32]bool
@@ -87,8 +90,12 @@ func (m *maskTyping) startWith(passphrase string) {
 	m.hook, m.stream, m.active = hook, stream, true
 	m.passphrase = passphrase
 	m.pendingHigh = 0
-	m.forceRestart = false
-	m.target = w32.TypingTarget()
+	// L'en-tete n'est pas ecrit tout de suite : il partirait dans le champ ou se
+	// trouve le curseur au moment du raccourci, qui n'est pas forcement celui ou
+	// l'utilisateur va ecrire. Il sera pose avec le premier caractere tape.
+	m.forceRestart = true
+	m.place = w32.TypingTarget()
+	m.enterPending = false
 	w32.MouseClickedSince() // remet le compteur de clics a zero
 	clear(m.swallowed)
 	m.app.setTrayState(true)
@@ -153,8 +160,10 @@ func maskHookProc(code int, wparam, lparam uintptr) uintptr {
 			m.forceRestart = true
 			return passThrough(app, code, wparam, lparam)
 		case w32.VK_RETURN:
-			// Le retour a la ligne traverse tel quel et ne coupe pas le texte :
-			// l'en-tete n'est ecrit qu'une fois, au debut de la frappe.
+			// La touche traverse telle quelle. Selon l'application, elle saute
+			// une ligne ou envoie le message : la difference se lit au prochain
+			// caractere, a la position du curseur.
+			m.enterPending = true
 			return passThrough(app, code, wparam, lparam)
 		}
 
@@ -183,9 +192,21 @@ func maskHookProc(code int, wparam, lparam uintptr) uintptr {
 // autre, et continuer a taper. Sans nouvel en-tete, le second champ serait
 // impossible a relire.
 func (m *maskTyping) header() string {
-	target := w32.TypingTarget()
-	moved := target != m.target || w32.MouseClickedSince() || m.forceRestart
-	m.target, m.forceRestart = target, false
+	place := w32.TypingTarget()
+	moved := place.Windows != m.place.Windows || w32.MouseClickedSince() || m.forceRestart
+
+	if !moved && m.enterPending {
+		// Apres Entree, deux cas. Dans un traitement de texte, le curseur est
+		// descendu d'une ligne : le texte continue. Dans une messagerie, le
+		// message est parti et le champ est vide : il faut repartir a zero.
+		// Les applications qui ne publient pas leur curseur, comme celles
+		// batties sur un navigateur, sont traitees comme des messageries : une
+		// reprise inutile ne coute que quelques caracteres, alors qu'une reprise
+		// oubliee rendrait le texte illisible.
+		moved = !place.HasCaret || !m.place.HasCaret || place.Caret.Top <= m.place.Caret.Top
+	}
+
+	m.place, m.forceRestart, m.enterPending = place, false, false
 	if !moved {
 		return ""
 	}
