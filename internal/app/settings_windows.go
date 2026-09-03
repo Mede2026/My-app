@@ -375,12 +375,7 @@ func (s *settingsWindow) workshop(encrypting bool) {
 	if encrypting {
 		result, err = crypto.Encrypt(source, passphrase, cfg.Salt())
 	} else {
-		token := crypto.FindToken(source)
-		if token == "" {
-			err = crypto.ErrNotAToken
-		} else {
-			result, err = crypto.Decrypt(token, passphrase)
-		}
+		result, err = crypto.DecryptText(source, passphrase)
 	}
 	if err != nil {
 		result = "[erreur] " + err.Error()

@@ -27,21 +27,28 @@ import (
 )
 
 const (
-	// Prefix marque le debut d'un message CryptoBulle.
-	Prefix = "MC1~"
+	// legacyPrefixBlock etait ecrit devant les messages des premieres versions.
+	// Il n'est plus produit, mais reste accepte a la relecture.
+	legacyPrefixBlock = "MC1~"
 	// SaltLen est la taille du sel, en octets.
 	SaltLen = 16
 
+	// magic n'apparait plus que dans les messages des premieres versions.
 	magic     = "MC1"
-	version   = 1
+	version   = 2
 	nonceLen  = 12
 	keyLen    = 32
-	headerLen = len(magic) + 1 + SaltLen + nonceLen
+	headerLen = SaltLen + nonceLen
+	// Disposition des messages produits avant le retrait du marqueur.
+	legacyHeaderLen = len(magic) + 1 + SaltLen + nonceLen
 
 	// scrypt : environ 16 Mo de memoire et ~50 ms de calcul.
 	scryptN = 1 << 14
 	scryptR = 8
 	scryptP = 1
+
+	// Taille de la signature ajoutee par AES-GCM.
+	tagLen = 16
 )
 
 // appPepper est melange a la phrase secrete : une meme phrase ne donne donc
@@ -56,7 +63,6 @@ var (
 	// Le tiret doit etre echappe : dans une classe [...], il signifierait
 	// « intervalle de caracteres ».
 	tokenClass = strings.ReplaceAll(regexp.QuoteMeta(appAlphabet), "-", `\-`)
-	tokenRe    = regexp.MustCompile(regexp.QuoteMeta(Prefix) + "[" + tokenClass + "]{40,}")
 	spaces     = strings.NewReplacer(" ", "", "\t", "", "\n", "", "\r", "", "\v", "", "\f", "")
 )
 
@@ -65,6 +71,7 @@ var (
 	ErrNoPassphrase = errors.New("aucune phrase secrete n'est configuree")
 	ErrEmpty        = errors.New("il n'y a rien a chiffrer")
 	ErrNotAToken    = errors.New("ce texte ne contient pas de message CryptoBulle")
+	ErrNotFound     = errors.New("aucun message CryptoBulle dans la selection")
 	ErrDamaged      = errors.New("message CryptoBulle incomplet ou abime")
 	ErrWrongKey     = errors.New("dechiffrement impossible : phrase secrete differente ou message modifie")
 )
@@ -141,8 +148,6 @@ func Encrypt(plaintext, passphrase string, salt []byte) (string, error) {
 	}
 
 	header := make([]byte, 0, headerLen)
-	header = append(header, magic...)
-	header = append(header, version)
 	header = append(header, salt...)
 	header = append(header, nonce...)
 
@@ -150,44 +155,71 @@ func Encrypt(plaintext, passphrase string, salt []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Le header sert de donnees associees : il est authentifie, pas chiffre.
-	sealed := gcm.Seal(nil, nonce, []byte(plaintext), header)
-	return Prefix + encoding.EncodeToString(append(header, sealed...)), nil
+	// Le sel et le nonce sont authentifies sans etre chiffres ; le numero de
+	// version, lui, voyage dans la partie chiffree pour ne rien laisser
+	// paraitre. Le message commence donc par du hasard pur.
+	sealed := gcm.Seal(nil, nonce, append([]byte{version}, plaintext...), header)
+	return encoding.EncodeToString(append(header, sealed...)), nil
 }
 
 // Decrypt relit un texte chiffre, dans l'un ou l'autre des deux formats.
+//
+// Pour une selection prise a la souris, prefere DecryptText, qui sait retrouver
+// le texte chiffre au milieu d'autre chose.
 func Decrypt(token, passphrase string) (string, error) {
+	return DecryptText(token, passphrase)
+}
+
+// decryptBlock relit un message ordinaire deja isole.
+func decryptBlock(token, passphrase string) (string, error) {
 	if passphrase == "" {
 		return "", ErrNoPassphrase
 	}
-	token = strings.TrimSpace(token)
-	if strings.HasPrefix(token, Prefix2) {
-		return decryptStream(token, passphrase)
-	}
-	if !strings.HasPrefix(token, Prefix) {
-		return "", ErrNotAToken
-	}
+	token = strings.TrimPrefix(strings.TrimSpace(token), legacyPrefixBlock)
 
-	raw, err := encoding.DecodeString(token[len(Prefix):])
+	raw, err := encoding.DecodeString(token)
 	if err != nil {
 		return "", ErrNotAToken
 	}
-	if len(raw) <= headerLen || string(raw[:3]) != magic {
-		return "", ErrDamaged
+	if len(raw) > legacyHeaderLen && string(raw[:len(magic)]) == magic {
+		return decryptLegacyBlock(raw, passphrase)
 	}
-	if raw[3] != version {
-		return "", fmt.Errorf("message cree avec une version plus recente (v%d)", raw[3])
+	if len(raw) <= headerLen+tagLen {
+		return "", ErrNotAToken
 	}
 
 	header := raw[:headerLen]
-	salt := raw[4 : 4+SaltLen]
-	nonce := raw[4+SaltLen : headerLen]
+	salt, nonce := raw[:SaltLen], raw[SaltLen:headerLen]
 
 	gcm, err := newGCM(passphrase, salt)
 	if err != nil {
 		return "", err
 	}
-	plaintext, err := gcm.Open(nil, nonce, raw[headerLen:], header)
+	opened, err := gcm.Open(nil, nonce, raw[headerLen:], header)
+	if err != nil {
+		return "", ErrWrongKey
+	}
+	if opened[0] != version {
+		return "", fmt.Errorf("message cree avec une version plus recente (v%d)", opened[0])
+	}
+	return string(opened[1:]), nil
+}
+
+// decryptLegacyBlock relit les messages produits avant le retrait du marqueur,
+// dont l'entete voyageait en clair.
+func decryptLegacyBlock(raw []byte, passphrase string) (string, error) {
+	if raw[len(magic)] != 1 {
+		return "", fmt.Errorf("message cree avec une version plus recente (v%d)", raw[len(magic)])
+	}
+	header := raw[:legacyHeaderLen]
+	salt := raw[len(magic)+1 : len(magic)+1+SaltLen]
+	nonce := raw[len(magic)+1+SaltLen : legacyHeaderLen]
+
+	gcm, err := newGCM(passphrase, salt)
+	if err != nil {
+		return "", err
+	}
+	plaintext, err := gcm.Open(nil, nonce, raw[legacyHeaderLen:], header)
 	if err != nil {
 		return "", ErrWrongKey
 	}
@@ -208,21 +240,14 @@ func newGCM(passphrase string, salt []byte) (cipher.AEAD, error) {
 
 // --- reperage dans un texte -------------------------------------------------
 
-// FindToken renvoie le premier jeton CryptoBulle contenu dans text, ou "".
+// LooksEncrypted indique si le texte est deja un message CryptoBulle.
 //
-// Les deux formats sont reconnus : la frappe masquee (MC2), cherchee ligne par
-// ligne, puis les messages ordinaires (MC1). Pour ces derniers, les espaces et
-// retours a la ligne sont retires au prealable, si bien qu'un jeton coupe en
-// plusieurs morceaux par un logiciel de courriel reste reconnu.
-func FindToken(text string) string {
-	if text == "" {
-		return ""
+// Plus rien ne depasse en clair : la seule facon de le savoir est d'essayer de
+// le relire. Cela sert a ne pas chiffrer deux fois le meme texte.
+func LooksEncrypted(text, passphrase string) bool {
+	if text == "" || passphrase == "" {
+		return false
 	}
-	if token := findStreamToken(text); token != "" {
-		return token
-	}
-	return tokenRe.FindString(spaces.Replace(text))
+	_, err := DecryptText(text, passphrase)
+	return err == nil
 }
-
-// LooksEncrypted indique si le texte contient un message CryptoBulle.
-func LooksEncrypted(text string) bool { return FindToken(text) != "" }

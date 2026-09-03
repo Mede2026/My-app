@@ -8,6 +8,8 @@ message chiffré. Vous sélectionnez ce message, vous faites `Ctrl+Alt+D` : une 
 
 Un seul fichier `CryptoBulle.exe` de **2,90 Mo**. Rien à installer.
 
+Un message chiffré ne commence par rien de reconnaissable: c'est juste du charabia.
+
 ---
 
 ## Ce que ça fait
@@ -97,8 +99,10 @@ c'est le même raccourci que pour les messages ordinaires.
   le seul indicateur, il n'y a pas de fenêtre qui s'ouvre : elle volerait le
   curseur au logiciel dans lequel vous écrivez.
 - Le **retour arrière** efface le caractère et libère sa place, comme d'habitude.
-- La touche **Entrée** commence une nouvelle ligne, avec son propre marqueur :
-  chaque ligne se relit indépendamment.
+- La touche **Entrée** commence une nouvelle ligne, avec son propre en-tête
+  invisible : chaque ligne se relit indépendamment.
+- Les **emojis** et les caractères rares sont chiffrés eux aussi. Rien ne sort
+  jamais en clair.
 - **Échap** ou `Ctrl+Alt+M` éteint le mode.
 - Les raccourcis du système continuent de fonctionner : `Ctrl+S`, `Alt+Tab` et
   compagnie passent sans être touchés. `AltGr` reste une touche d'écriture.
@@ -157,7 +161,7 @@ présentes dans le système.
 Un message chiffré ressemble à ceci :
 
 ```
-MC1~UZgbAzkdfBpOmBiKoUQ5b0pfhpzwi5CZFsCwIO85HMFHwZpipPP6tp06OhG18Wmn...
+sfL1wOwg21rRSVwswO0RJA6sxg0jTGvaWWaR1U-MOtBGZ68luGYa9uXsMBml9kwjV0B-...
 ```
 
 Trois couches :
@@ -176,11 +180,37 @@ Le format n'a pas changé depuis la version Python. Un test automatique déchiff
 message produit par l'ancienne version, pour garantir que vos anciens messages
 restent lisibles.
 
-La frappe masquée utilise un second format, `MC2~`, qui doit produire un caractère
-dès que vous en tapez un. AES en mode compteur fabrique une suite d'octets
-imprévisible, et chaque octet décale la lettre tapée dans l'alphabet. Le marqueur
-de douze caractères en début de ligne contient le tirage aléatoire de la session,
-ce qui fait que la même phrase tapée deux fois ne donne jamais le même affichage.
+La frappe masquée utilise un second format, qui doit produire un caractère dès
+que vous en tapez un. AES en mode compteur fabrique une suite d'octets
+imprévisible, et chaque octet décale la lettre tapée dans l'alphabet. Les dix
+premiers caractères de la ligne portent le tirage aléatoire de la session et deux
+caractères de contrôle. Ils ne se voient pas : ils ressemblent au reste.
+
+Un emoji, ou tout caractère absent de la liste, s'écrit en quatre caractères
+masqués : un signal d'échappement, puis son numéro Unicode. C'est le seul endroit
+où un caractère tapé n'en donne pas exactement un.
+
+## Rien qui annonce un message chiffré
+
+Aucun préfixe, aucune signature visible, aucun début commun. Deux messages du même
+texte ne se ressemblent pas, et rien ne permet à un lecteur de dire « tiens, du
+CryptoBulle ». Le tirage aléatoire est placé en tête, si bien que les premiers
+caractères changent à chaque fois.
+
+Comment l'application s'y retrouve, alors ? Elle **essaie**. Sur votre sélection,
+elle repère les suites de caractères plausibles et tente de les relire :
+
+- un message ordinaire porte une **signature** interne qui ne peut pas apparaître
+  par hasard ; s'il se déchiffre, c'est le bon ;
+- une ligne tapée en frappe masquée porte **deux caractères de contrôle**, calculés
+  à partir de la clé, qui disent « c'est bien pour moi » sans rien laisser voir.
+
+Si vous sélectionnez un texte ordinaire, la bulle dit simplement qu'il n'y a rien à
+déchiffrer. Si le message est bien du CryptoBulle mais que la phrase secrète ne
+correspond pas, elle le dit précisément.
+
+Les messages produits par les versions précédentes, qui commençaient par `MC1~` ou
+`MC2~`, restent lisibles.
 
 ### Petit lexique
 
@@ -229,7 +259,7 @@ conservés.
 
 ```
 cmd/cryptobulle/      point d'entrée, manifeste et icône de l'exécutable
-internal/crypto/      formats MC1 et MC2 : scrypt, AES-GCM, chiffrement par flux
+internal/crypto/      les deux formats : scrypt, AES-GCM, chiffrement par flux
 internal/hotkey/      lecture des combinaisons (« ctrl+alt+d »)
 internal/config/      réglages JSON, phrase secrète protégée par DPAPI
 internal/w32/         appels aux API de Windows, dessin lissé

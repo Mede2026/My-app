@@ -20,16 +20,24 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"fmt"
-	"regexp"
 	"strings"
 )
 
-// Prefix2 marque le debut d'un texte tape en frappe masquee.
-const Prefix2 = "MC2~"
+// legacyPrefixStream etait ecrit devant les textes des premieres versions. Il
+// n'est plus produit, mais reste accepte a la relecture.
+const legacyPrefixStream = "MC2~"
 
 const (
 	streamNonceLen   = 6 // octets tires au hasard a chaque activation
 	streamNonceChars = 8 // leur ecriture dans l'alphabet maison
+	// Deux caracteres de controle, calcules a partir de la cle et du tirage.
+	// Ils ne se voient pas : ils ressemblent au reste du charabia. Ils
+	// permettent a l'application de reconnaitre son propre texte, et de dire
+	// « ce n'est pas pour moi » plutot que de rendre n'importe quoi.
+	streamCheckChars = 2
+	// Les deux premiers octets de la suite chiffrante servent au controle : le
+	// texte lui-meme commence apres.
+	streamTextStart = 2
 )
 
 // Sel fixe : le nonce, lui, change a chaque activation. Un sel constant permet
@@ -38,14 +46,17 @@ const (
 var streamSalt = []byte("CryptoBulle-flux")
 
 // inputRunes : ce que l'utilisateur peut taper. outputRunes : ce qui s'affiche.
-// Les deux ensembles font la meme taille, ce qui garantit une correspondance
-// exacte, un caractere pour un caractere. L'ensemble de sortie ne contient ni
-// espace ni retour a la ligne, pour que le texte masque reste un seul bloc
-// facile a selectionner.
+// L'ensemble de sortie ne contient ni espace ni retour a la ligne, pour que le
+// texte masque reste un bloc facile a selectionner.
+//
+// La sortie compte une place de plus que l'entree : cette place supplementaire
+// sert d'echappement. Elle annonce un caractere qui n'est pas dans la liste,
+// emoji compris ; son numero Unicode suit alors sur trois caracteres masques.
+// Rien ne sort donc jamais en clair.
 const (
 	inputRunes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 " +
 		".,;:!?'\"-()[]{}/\\@#&+=%*_<>|~^$" +
-		"éèêëàâäùûüçîïôöÿœæÉÈÊÀÂÙÛÇÎÔŒÆ°§µ€"
+		"éèêëàâäùûüçîïôöÿœæÉÈÊÀÂÙÛÇÎÔŒÆ°§µ"
 	outputRunes = "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`" +
 		"abcdefghijklmnopqrstuvwxyz{|}~" +
 		"éèêëàâäùûüçîïôöÿœæÉÈÊÀÂÙÛÇÎÔŒÆ°§µ€"
@@ -57,17 +68,17 @@ var (
 	inputIndex  = map[rune]int{}
 	outputIndex = map[rune]int{}
 	alphabetLen int
-
-	streamRe = regexp.MustCompile(
-		regexp.QuoteMeta(Prefix2) +
-			"[" + tokenClass + "]{" + fmt.Sprint(streamNonceChars) + "}" +
-			"[" + regexp.QuoteMeta(outputRunes) + "]+")
 )
 
+// escapeIndex est la place reservee a l'echappement, juste apres les
+// caracteres ordinaires.
+var escapeIndex int
+
 func init() {
-	alphabetLen = len(inputTable)
-	if len(outputTable) != alphabetLen {
-		panic("crypto : les alphabets de la frappe masquee n'ont pas la meme taille")
+	alphabetLen = len(outputTable)
+	escapeIndex = len(inputTable)
+	if escapeIndex != alphabetLen-1 {
+		panic("crypto : la sortie doit compter exactement une place de plus que l'entree")
 	}
 	for index, letter := range inputTable {
 		inputIndex[letter] = index
@@ -75,7 +86,7 @@ func init() {
 	for index, letter := range outputTable {
 		outputIndex[letter] = index
 	}
-	if len(inputIndex) != alphabetLen || len(outputIndex) != alphabetLen {
+	if len(inputIndex) != escapeIndex || len(outputIndex) != alphabetLen {
 		panic("crypto : un caractere est repete dans un alphabet de la frappe masquee")
 	}
 }
@@ -116,13 +127,19 @@ func newStreamWithNonce(passphrase string, nonce []byte) (*Stream, error) {
 	}
 	iv := make([]byte, block.BlockSize())
 	copy(iv, nonce)
-	return &Stream{
-		counter: cipher.NewCTR(block, iv),
-		marker:  Prefix2 + encoding.EncodeToString(nonce),
-	}, nil
+	stream := &Stream{counter: cipher.NewCTR(block, iv), position: streamTextStart}
+	// L'en-tete invisible : le tirage aleatoire, puis les deux caracteres de
+	// controle tires de la suite chiffrante.
+	header := encoding.EncodeToString(nonce)
+	for index := 0; index < streamCheckChars; index++ {
+		header += string(outputTable[int(stream.byteAt(index))%alphabetLen])
+	}
+	stream.marker = header
+	return stream, nil
 }
 
-// Marker est le texte a inserer avant les caracteres masques.
+// Marker est l'en-tete a ecrire avant les caracteres masques. Il ne contient
+// aucun mot reconnaissable : il se lit comme la suite du charabia.
 func (s *Stream) Marker() string { return s.marker }
 
 // byteAt rend l'octet de la suite chiffrante a la position demandee, en la
@@ -137,71 +154,106 @@ func (s *Stream) byteAt(position int) byte {
 	return s.keystream[position]
 }
 
-// Mask rend le caractere a afficher a la place de celui qui vient d'etre tape.
-// Le second resultat est faux si le caractere n'est pas dans l'alphabet : il
-// doit alors etre laisse tel quel.
-func (s *Stream) Mask(typed rune) (rune, bool) {
-	index, known := inputIndex[typed]
-	if !known {
-		return typed, false
+// Mask rend ce qu'il faut afficher a la place du caractere qui vient d'etre
+// tape : un seul caractere en general, quatre pour ceux qui sortent de la liste
+// (emoji, symboles rares). Rien n'est jamais laisse en clair.
+func (s *Stream) Mask(typed rune) string {
+	if index, known := inputIndex[typed]; known {
+		return string(s.maskIndex(index))
 	}
+
+	// Echappement : la place reservee, puis le numero Unicode sur trois
+	// morceaux de sept bits.
+	code := uint32(typed)
+	masked := []rune{
+		s.maskIndex(escapeIndex),
+		s.maskIndex(int(code >> 14 & 0x7F)),
+		s.maskIndex(int(code >> 7 & 0x7F)),
+		s.maskIndex(int(code & 0x7F)),
+	}
+	return string(masked)
+}
+
+// maskIndex chiffre une position de l'alphabet et avance d'un cran.
+func (s *Stream) maskIndex(index int) rune {
 	shift := int(s.byteAt(s.position))
 	s.position++
-	return outputTable[(index+shift)%alphabetLen], true
+	return outputTable[(index+shift)%alphabetLen]
 }
 
 // Rewind revient d'un caractere en arriere, apres un retour arriere au clavier.
 func (s *Stream) Rewind() {
-	if s.position > 0 {
+	if s.position > streamTextStart {
 		s.position--
 	}
 }
 
 // Position est le nombre de caracteres deja masques.
-func (s *Stream) Position() int { return s.position }
+func (s *Stream) Position() int { return s.position - streamTextStart }
+
+// unmask retrouve la position d'origine d'un caractere affiche.
+func (s *Stream) unmask(letter rune) (int, bool) {
+	index, known := outputIndex[letter]
+	if !known {
+		return 0, false
+	}
+	shift := int(s.byteAt(s.position))
+	s.position++
+	return ((index-shift)%alphabetLen + alphabetLen) % alphabetLen, true
+}
 
 // decryptStream relit un texte tape en frappe masquee.
+//
+// L'erreur ErrNotFound signale que ce texte n'en est pas un : les deux
+// caracteres de controle ne correspondent pas.
 func decryptStream(token, passphrase string) (string, error) {
-	body := token[len(Prefix2):]
-	if len(body) < streamNonceChars {
-		return "", ErrDamaged
+	if passphrase == "" {
+		return "", ErrNoPassphrase
 	}
-	nonce, err := encoding.DecodeString(body[:streamNonceChars])
-	if err != nil || len(nonce) != streamNonceLen {
-		return "", ErrDamaged
+	letters := []rune(strings.TrimPrefix(token, legacyPrefixStream))
+	if len(letters) <= streamNonceChars+streamCheckChars {
+		return "", ErrNotFound
 	}
 
+	nonce, err := encoding.DecodeString(string(letters[:streamNonceChars]))
+	if err != nil || len(nonce) != streamNonceLen {
+		return "", ErrNotFound
+	}
 	stream, err := newStreamWithNonce(passphrase, nonce)
 	if err != nil {
 		return "", err
 	}
+	if string(letters[streamNonceChars:streamNonceChars+streamCheckChars]) !=
+		stream.marker[streamNonceChars:] {
+		return "", ErrNotFound // pas notre texte, ou pas la bonne phrase secrete
+	}
 
+	body := letters[streamNonceChars+streamCheckChars:]
 	var plain strings.Builder
-	for _, letter := range body[streamNonceChars:] {
-		index, known := outputIndex[letter]
+	for position := 0; position < len(body); position++ {
+		index, known := stream.unmask(body[position])
 		if !known {
-			plain.WriteRune(letter) // laisse tel quel, comme au chiffrement
+			plain.WriteRune(body[position]) // caractere etranger au texte masque
 			continue
 		}
-		shift := int(stream.byteAt(stream.position))
-		stream.position++
-		plain.WriteRune(inputTable[((index-shift)%alphabetLen+alphabetLen)%alphabetLen])
+		if index != escapeIndex {
+			plain.WriteRune(inputTable[index])
+			continue
+		}
+		// Echappement : les trois caracteres suivants portent le numero Unicode.
+		if position+3 >= len(body) {
+			break
+		}
+		code := uint32(0)
+		for morceau := 0; morceau < 3; morceau++ {
+			position++
+			digit, known := stream.unmask(body[position])
+			if !known {
+				return plain.String(), nil
+			}
+			code = code<<7 | uint32(digit&0x7F)
+		}
+		plain.WriteRune(rune(code))
 	}
 	return plain.String(), nil
-}
-
-// findStreamToken cherche un texte masque, ligne par ligne.
-//
-// Les espaces ne sont pas retires ici, contrairement au format MC1 : chaque
-// ligne est un texte independant, avec son propre marqueur.
-func findStreamToken(text string) string {
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimRight(line, "\r")
-		if start := strings.Index(line, Prefix2); start >= 0 {
-			if token := streamRe.FindString(line[start:]); token != "" {
-				return token
-			}
-		}
-	}
-	return ""
 }

@@ -6,10 +6,23 @@ import (
 	"testing"
 )
 
+// aucunMarqueur verifie qu'aucun mot reconnaissable n'annonce le texte chiffre.
+//
+// Les caracteres pris un a un, eux, peuvent apparaitre : c'est le propre du
+// charabia. Seules les suites completes des anciens marqueurs sont interdites.
+func aucunMarqueur(t *testing.T, texte string) {
+	t.Helper()
+	for _, marqueur := range []string{"MC1~", "MC2~"} {
+		if strings.Contains(texte, marqueur) {
+			t.Fatalf("le texte produit contient le marqueur %q : %.30q", marqueur, texte)
+		}
+	}
+}
+
 const pass = "batterie-metal-2022"
 
-// Jeton produit par la premiere version (ecrite en Python). Le format n'ayant
-// pas change, la version Go doit savoir le relire.
+// Jeton produit par la premiere version (ecrite en Python), marqueur compris.
+// Le format n'ayant pas change, il doit rester lisible.
 const pythonToken = "MC1~UZgbAzkdfBpOmBiKoUQ5b0pfhpzwi5CZFsCwIO85HMFHwZpipPP6tp06OhG18WmnpWT6HmLSEsCp0y4HvNUQBVSk1pBd0iqU5lGt59nmJR"
 
 func TestCompatibleAvecLaVersionPython(t *testing.T) {
@@ -29,9 +42,7 @@ func TestAllerRetour(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Encrypt(%.10q) : %v", message, err)
 		}
-		if !strings.HasPrefix(token, Prefix) {
-			t.Fatalf("le jeton ne commence pas par %q", Prefix)
-		}
+		aucunMarqueur(t, token)
 		got, err := Decrypt(token, pass)
 		if err != nil {
 			t.Fatalf("Decrypt : %v", err)
@@ -83,7 +94,7 @@ func TestLeTexteNApparaitPas(t *testing.T) {
 
 func TestBase64StandardNeDonneRien(t *testing.T) {
 	token, _ := Encrypt("message secret", pass, nil)
-	raw, err := base64.RawURLEncoding.DecodeString(token[len(Prefix):])
+	raw, err := base64.RawURLEncoding.DecodeString(token)
 	if err == nil && len(raw) >= 3 && string(raw[:3]) == magic {
 		t.Fatal("un decodeur base64 standard retrouve l'entete")
 	}
@@ -96,32 +107,63 @@ func TestEntreesInvalides(t *testing.T) {
 	if _, err := Encrypt("texte", "", nil); err != ErrNoPassphrase {
 		t.Fatalf("phrase vide : %v", err)
 	}
-	if _, err := Decrypt("bonjour tout le monde", pass); err != ErrNotAToken {
+	if _, err := Decrypt("bonjour tout le monde", pass); err != ErrNotFound {
 		t.Fatalf("texte ordinaire : %v", err)
 	}
-	if _, err := Decrypt(Prefix+"AAAA", pass); err == nil {
+	if _, err := Decrypt("AAAA", pass); err == nil {
 		t.Fatal("jeton trop court accepte")
 	}
 }
 
-func TestFindToken(t *testing.T) {
+func TestReperageSansMarqueur(t *testing.T) {
 	token, _ := Encrypt("rendez-vous a 15h", pass, nil)
 
-	inside := "Salut ! Voici : \"" + token + "\" a bientot."
-	if got := FindToken(inside); got != token {
-		t.Fatal("jeton non repere au milieu d'une phrase")
+	entoure := "Salut ! Voici : \"" + token + "\" a bientot."
+	if relu, err := DecryptText(entoure, pass); err != nil || relu != "rendez-vous a 15h" {
+		t.Fatalf("message non repere au milieu d'une phrase : %q, %v", relu, err)
 	}
 
-	wrapped := token[:30] + "\n" + token[30:60] + "\r\n " + token[60:]
-	if got := FindToken(wrapped); got != token {
-		t.Fatal("jeton coupe sur plusieurs lignes non repere")
+	coupe := token[:30] + "\n" + token[30:60] + "\r\n " + token[60:]
+	if relu, err := DecryptText(coupe, pass); err != nil || relu != "rendez-vous a 15h" {
+		t.Fatalf("message coupe en plusieurs lignes non repere : %q, %v", relu, err)
 	}
+}
 
-	if FindToken("juste du texte") != "" || FindToken("") != "" {
-		t.Fatal("faux positif")
+func TestTexteOrdinaireRefuse(t *testing.T) {
+	textes := []string{
+		"", "   ", "juste du texte",
+		"Bonjour, comment vas-tu aujourd'hui ? On se voit demain.",
+		strings.Repeat("motsanslespaces", 20),
 	}
-	if LooksEncrypted("MC1~court") {
-		t.Fatal("un prefixe seul ne doit pas compter comme un message")
+	for _, texte := range textes {
+		if relu, err := DecryptText(texte, pass); err == nil {
+			t.Fatalf("texte ordinaire accepte : %.20q a donne %q", texte, relu)
+		}
+	}
+}
+
+func TestLooksEncrypted(t *testing.T) {
+	token, _ := Encrypt("deja chiffre", pass, nil)
+	if !LooksEncrypted(token, pass) {
+		t.Fatal("un message chiffre devrait etre reconnu")
+	}
+	if !LooksEncrypted("voici : "+token, pass) {
+		t.Fatal("un message chiffre au milieu d'une phrase devrait etre reconnu")
+	}
+	for _, texte := range []string{"", "bonjour", "MC1~court", strings.Repeat("abc", 40)} {
+		if LooksEncrypted(texte, pass) {
+			t.Fatalf("faux positif sur %.20q", texte)
+		}
+	}
+}
+
+func TestAucunDebutReconnaissable(t *testing.T) {
+	// Deux messages du meme texte ne doivent partager aucun debut commun :
+	// sinon, ce debut serait lui-meme un marqueur.
+	first, _ := Encrypt("bonjour", pass, nil)
+	second, _ := Encrypt("bonjour", pass, nil)
+	if first[:4] == second[:4] {
+		t.Fatalf("les messages commencent tous par %q", first[:4])
 	}
 }
 

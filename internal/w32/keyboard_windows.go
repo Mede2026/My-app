@@ -29,6 +29,10 @@ const (
 	VK_LMENU   = 0xA4 // Alt de gauche
 	VK_RMENU   = 0xA5 // Alt de droite, « AltGr » sur les claviers francais
 	VK_CAPITAL = 0x14
+	// VK_PACKET : une touche « fabriquee » par un programme, qui transporte
+	// directement un caractere. C'est ainsi qu'arrivent les emojis choisis dans
+	// le panneau de Windows.
+	VK_PACKET = 0xE7
 
 	// Signature attachee a nos propres frappes simulees, pour les reconnaitre
 	// quand elles repassent par le hook.
@@ -85,11 +89,13 @@ func KeyEventAt(lparam uintptr) KBDLLHOOKSTRUCT {
 	return *(*KBDLLHOOKSTRUCT)(pointer)
 }
 
+// FromUs indique que la touche est l'une de nos propres frappes simulees.
+// Celles-la doivent traverser sans etre retouchees, sinon elles seraient
+// masquees a l'infini.
+func (k KBDLLHOOKSTRUCT) FromUs() bool { return k.ExtraInfo == injectedSignature }
+
 // IsInjected indique que la touche vient d'un programme, pas d'un vrai clavier.
-// Nos propres frappes simulees en font partie.
-func (k KBDLLHOOKSTRUCT) IsInjected() bool {
-	return k.Flags&LLKHF_INJECTED != 0 || k.ExtraInfo == injectedSignature
-}
+func (k KBDLLHOOKSTRUCT) IsInjected() bool { return k.Flags&LLKHF_INJECTED != 0 }
 
 // foregroundLayout rend la disposition clavier de la fenetre active : sans
 // elle, un clavier francais serait lu comme un clavier americain.

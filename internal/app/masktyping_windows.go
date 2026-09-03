@@ -27,6 +27,10 @@ type maskTyping struct {
 
 	// Touches dont l'appui a ete avale : leur relachement doit l'etre aussi.
 	swallowed map[uint32]bool
+
+	// Premiere moitie d'un caractere transmis en deux morceaux, comme le sont
+	// les emojis. On attend la seconde pour reconstituer le caractere entier.
+	pendingHigh rune
 }
 
 func newMaskTyping(app *App) *maskTyping {
@@ -68,6 +72,7 @@ func (m *maskTyping) start() {
 		return
 	}
 	m.hook, m.stream, m.active = hook, stream, true
+	m.pendingHigh = 0
 	clear(m.swallowed)
 	m.app.setTrayState(true)
 }
@@ -109,7 +114,7 @@ func maskHookProc(code int, wparam, lparam uintptr) uintptr {
 	m := app.mask
 	event := w32.KeyEventAt(lparam)
 
-	if event.IsInjected() { // nos propres frappes simulees
+	if event.FromUs() { // nos propres frappes simulees
 		return passThrough(app, code, wparam, lparam)
 	}
 
@@ -145,19 +150,54 @@ func maskHookProc(code int, wparam, lparam uintptr) uintptr {
 			return 1
 		}
 
-		letter, ok := w32.CharFromKey(event.VkCode, event.ScanCode)
+		letter, ok := m.letterFor(event)
 		if !ok {
+			// Soit la touche ne produit pas de caractere (fleches, touches
+			// mortes), soit c'est la premiere moitie d'un emoji : dans ce
+			// dernier cas la touche a deja ete retenue et doit etre avalee.
+			if m.pendingHigh != 0 {
+				m.swallowed[event.VkCode] = true
+				return 1
+			}
 			return passThrough(app, code, wparam, lparam)
 		}
-		masked, changed := m.stream.Mask(letter)
-		if !changed { // caractere hors alphabet : laisse tel quel
-			return passThrough(app, code, wparam, lparam)
-		}
-		w32.SendRune(masked)
+		w32.SendString(m.stream.Mask(letter))
 		m.swallowed[event.VkCode] = true
 		return 1
 	}
 	return passThrough(app, code, wparam, lparam)
+}
+
+// letterFor traduit une touche en caractere complet.
+//
+// Les emojis arrivent en deux morceaux, sous forme de touches fabriquees par
+// Windows : on garde le premier de cote et on reconstitue le caractere a
+// l'arrivee du second.
+func (m *maskTyping) letterFor(event w32.KBDLLHOOKSTRUCT) (rune, bool) {
+	letter, ok := rune(0), false
+	if event.VkCode == w32.VK_PACKET {
+		letter, ok = rune(event.ScanCode), true
+	} else {
+		letter, ok = w32.CharFromKey(event.VkCode, event.ScanCode)
+	}
+	if !ok {
+		return 0, false
+	}
+
+	switch {
+	case letter >= 0xD800 && letter <= 0xDBFF: // premiere moitie
+		m.pendingHigh = letter
+		return 0, false
+	case letter >= 0xDC00 && letter <= 0xDFFF: // seconde moitie
+		if m.pendingHigh == 0 {
+			return 0, false
+		}
+		complete := 0x10000 + (m.pendingHigh-0xD800)<<10 + (letter - 0xDC00)
+		m.pendingHigh = 0
+		return complete, true
+	}
+	m.pendingHigh = 0
+	return letter, true
 }
 
 func passThrough(app *App, code int, wparam, lparam uintptr) uintptr {

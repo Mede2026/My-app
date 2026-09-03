@@ -15,15 +15,16 @@ func masquer(t *testing.T, texte, phrase string) string {
 	var visible strings.Builder
 	visible.WriteString(stream.Marker())
 	for _, letter := range texte {
-		masked, _ := stream.Mask(letter)
-		visible.WriteRune(masked)
+		visible.WriteString(stream.Mask(letter))
 	}
 	return visible.String()
 }
 
 func TestAlphabetsDeLaFrappeMasquee(t *testing.T) {
-	if len(inputTable) != len(outputTable) {
-		t.Fatalf("tailles differentes : %d et %d", len(inputTable), len(outputTable))
+	// La sortie compte une place de plus : celle de l'echappement, qui annonce
+	// un caractere absent de la liste (emoji, symbole rare).
+	if len(outputTable) != len(inputTable)+1 {
+		t.Fatalf("tailles inattendues : entree %d, sortie %d", len(inputTable), len(outputTable))
 	}
 	if len(inputIndex) != len(inputTable) || len(outputIndex) != len(outputTable) {
 		t.Fatal("un caractere est repete dans un alphabet")
@@ -48,9 +49,7 @@ func TestAllerRetourFrappeMasquee(t *testing.T) {
 	}
 	for _, texte := range textes {
 		visible := masquer(t, texte, pass)
-		if !strings.HasPrefix(visible, Prefix2) {
-			t.Fatalf("marqueur absent pour %.20q", texte)
-		}
+		aucunMarqueur(t, visible)
 		relu, err := Decrypt(visible, pass)
 		if err != nil {
 			t.Fatalf("Decrypt(%.20q) : %v", texte, err)
@@ -64,7 +63,7 @@ func TestAllerRetourFrappeMasquee(t *testing.T) {
 func TestLongueurConserveeEtTexteCache(t *testing.T) {
 	texte := "mot de passe du wifi"
 	visible := masquer(t, texte, pass)
-	corps := visible[len(Prefix2)+streamNonceChars:]
+	corps := string([]rune(visible)[streamNonceChars+streamCheckChars:])
 
 	if len([]rune(corps)) != len([]rune(texte)) {
 		t.Fatalf("un caractere tape doit donner un caractere affiche : %d contre %d",
@@ -86,16 +85,14 @@ func TestRetourArriere(t *testing.T) {
 	visible := []rune(stream.Marker())
 
 	for _, letter := range "cha" {
-		masked, _ := stream.Mask(letter)
-		visible = append(visible, masked)
+		visible = append(visible, []rune(stream.Mask(letter))...)
 	}
 	// L'utilisateur efface le « a » et tape « t » a la place : il reste « cht ».
 	// Le compteur recule pour que le caractere efface et le nouveau utilisent le
 	// meme octet de la suite chiffrante, sans quoi la relecture serait decalee.
 	visible = visible[:len(visible)-1]
 	stream.Rewind()
-	masked, _ := stream.Mask('t')
-	visible = append(visible, masked)
+	visible = append(visible, []rune(stream.Mask('t'))...)
 
 	relu, err := Decrypt(string(visible), pass)
 	if err != nil {
@@ -106,26 +103,57 @@ func TestRetourArriere(t *testing.T) {
 	}
 }
 
-func TestCaracteresHorsAlphabetLaissesTelsQuels(t *testing.T) {
-	stream, _ := NewStream(pass)
-	if _, masque := stream.Mask('🥁'); masque {
-		t.Fatal("un caractere hors alphabet ne devrait pas etre masque")
+func TestEmojisEtCaracteresRares(t *testing.T) {
+	textes := []string{
+		"🥁",
+		"salut 🥁 ça va ?",
+		"ski ⛷ au Massif 🏔 samedi",
+		"prix : 12 € pour 3 kg",
+		"日本語",
 	}
-	if stream.Position() != 0 {
-		t.Fatal("un caractere laisse tel quel ne doit pas avancer le compteur")
+	for _, texte := range textes {
+		visible := masquer(t, texte, pass)
+		corps := string([]rune(visible)[streamNonceChars+streamCheckChars:])
+
+		// Un caractere absent de l'alphabet de sortie ne peut pas s'y trouver
+		// par hasard : s'il apparait, c'est qu'il est passe en clair.
+		for _, letter := range corps {
+			if _, connu := outputIndex[letter]; !connu {
+				t.Fatalf("le caractere %q est passe en clair dans %.30q", letter, corps)
+			}
+		}
+		if strings.Contains(corps, texte) {
+			t.Fatalf("le texte tape apparait tel quel dans %.30q", corps)
+		}
+		relu, err := Decrypt(visible, pass)
+		if err != nil {
+			t.Fatalf("Decrypt(%q) : %v", texte, err)
+		}
+		if relu != texte {
+			t.Fatalf("aller-retour casse :\n  attendu %q\n  obtenu  %q", texte, relu)
+		}
 	}
 }
 
-func TestMauvaisePhraseDonneDuCharabia(t *testing.T) {
-	// Un chiffrement par flux n'a pas de signature : avec la mauvaise phrase, on
-	// obtient du charabia plutot qu'une erreur. C'est une limite assumee.
-	visible := masquer(t, "rendez-vous a 15h", pass)
-	relu, err := Decrypt(visible, "mauvaise phrase")
-	if err != nil {
-		t.Fatalf("erreur inattendue : %v", err)
+func TestUnEmojiOccupeQuatreCaracteres(t *testing.T) {
+	// Un caractere hors de la liste s'ecrit en quatre : l'echappement, puis son
+	// numero Unicode. C'est le seul endroit ou la correspondance n'est pas
+	// exactement un pour un.
+	stream, _ := NewStream(pass)
+	if got := len([]rune(stream.Mask('a'))); got != 1 {
+		t.Fatalf("une lettre ordinaire doit donner un caractere, obtenu %d", got)
 	}
-	if relu == "rendez-vous a 15h" {
-		t.Fatal("la mauvaise phrase secrete a quand meme donne le bon texte")
+	if got := len([]rune(stream.Mask('🥁'))); got != 4 {
+		t.Fatalf("un emoji doit donner quatre caracteres, obtenu %d", got)
+	}
+}
+
+func TestMauvaisePhraseRefusee(t *testing.T) {
+	// Les deux caracteres de controle permettent de dire « ce n'est pas pour
+	// moi » plutot que de rendre du charabia.
+	visible := masquer(t, "rendez-vous a 15h", pass)
+	if relu, err := Decrypt(visible, "mauvaise phrase"); err == nil {
+		t.Fatalf("la mauvaise phrase secrete a donne %q", relu)
 	}
 }
 
@@ -136,15 +164,14 @@ func TestDeuxActivationsDonnentDesTextesDifferents(t *testing.T) {
 }
 
 func TestReperageDansUneLigne(t *testing.T) {
-	visible := masquer(t, "salut", pass)
-	entoure := "Il a ecrit " + visible + " juste avant"
-	if got := FindToken(entoure); got != visible {
-		t.Fatalf("jeton mal repere :\n  attendu %q\n  obtenu  %q", visible, got)
+	visible := masquer(t, "salut tout le monde", pass)
+	if relu, err := DecryptText(visible, pass); err != nil || relu != "salut tout le monde" {
+		t.Fatalf("ligne seule : %q, %v", relu, err)
 	}
 
-	// Deux lignes : la premiere doit etre rendue en entier, sans deborder.
+	// Deux lignes : chacune se relit toute seule, sans deborder sur l'autre.
 	deuxLignes := masquer(t, "ligne un", pass) + "\r\n" + masquer(t, "ligne deux", pass)
-	relu, err := Decrypt(FindToken(deuxLignes), pass)
+	relu, err := DecryptText(deuxLignes, pass)
 	if err != nil {
 		t.Fatal(err)
 	}

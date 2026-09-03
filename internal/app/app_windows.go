@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"runtime"
 	"strings"
 	"sync"
@@ -388,16 +389,13 @@ func (a *App) actionDecrypt() {
 		_ = setClipboardText(previous)
 	}
 
-	token := crypto.FindToken(text)
-	if token == "" {
-		a.showBubble("Rien a dechiffrer",
-			"Aucun message CryptoBulle dans la selection.\nSelectionnez un texte qui commence par MC1~.",
-			kindError, -1)
-		return
-	}
-	plaintext, err := crypto.Decrypt(token, cfg.Passphrase())
+	plaintext, err := crypto.DecryptText(text, cfg.Passphrase())
 	if err != nil {
-		a.showBubble("Dechiffrement impossible", capitalize(err.Error()), kindError, -1)
+		title := "Dechiffrement impossible"
+		if errors.Is(err, crypto.ErrNotFound) {
+			title = "Rien a dechiffrer"
+		}
+		a.showBubble(title, capitalize(err.Error()), kindError, -1)
 		return
 	}
 	a.showBubble("Texte dechiffre", plaintext, kindSuccess, -1)
@@ -416,7 +414,7 @@ func (a *App) actionEncrypt() {
 			"Selectionnez d'abord du texte, puis refaites le raccourci.", kindError, -1)
 		return
 	}
-	if crypto.LooksEncrypted(text) {
+	if crypto.LooksEncrypted(text, cfg.Passphrase()) {
 		a.showBubble("Deja chiffre", "Ce texte est deja un message CryptoBulle.", kindError, -1)
 		return
 	}
