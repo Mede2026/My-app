@@ -98,7 +98,10 @@ c'est le même raccourci que pour les messages ordinaires.
   curseur au logiciel dans lequel vous écrivez.
 - Le **retour arrière** efface le caractère et libère sa place, comme d'habitude.
 - La touche **Entrée** passe telle quelle : un paragraphe entier reste un seul
-  texte masqué. Sélectionnez-le en entier, depuis son début, pour le relire.
+  texte masqué.
+- Si vous **changez de champ**, de fenêtre, ou déplacez le curseur, l'application
+  repose son en-tête invisible toute seule. Chaque morceau reste donc lisible,
+  où qu'il ait été écrit.
 - Les **emojis** et les caractères rares sont chiffrés eux aussi. Rien ne sort
   jamais en clair.
 - La ligne ne porte **aucun marqueur** : c'est du charabia du premier au dernier
@@ -221,10 +224,15 @@ regardant votre écran. Le texte n'utilise que des caractères ordinaires du
 clavier, sans accent ni symbole exotique : ça ressemble à `fPyC@.WE^E`, pas à du
 texte abîmé.
 
-Six caractères de plus s'ajoutent **une seule fois**, au tout début de la frappe :
-quatre pour le tirage aléatoire de la session, deux pour le contrôle. Vous pouvez
-écrire un paragraphe entier, avec des retours à la ligne, sans que rien ne se
-répète. Ils ne se voient pas, ils se lisent comme le reste.
+Sept caractères de plus s'ajoutent au début de chaque morceau de texte : quatre
+pour le tirage aléatoire, trois pour le contrôle. Un morceau, c'est tout ce que
+vous écrivez d'affilée au même endroit. Un paragraphe entier, retours à la ligne
+compris, n'en porte donc qu'un seul. Changer de champ en pose un nouveau, ce qui
+est exactement ce qui rend le nouveau champ lisible.
+
+Ces sept caractères ne se voient pas, ils se lisent comme le reste. À la
+relecture, l'application les reconnaît où qu'ils soient, même au milieu d'une
+ligne.
 
 Ces six caractères évitent le pire défaut possible : sans tirage aléatoire, deux
 fois la même phrase donnerait exactement le même affichage, et quelqu'un qui

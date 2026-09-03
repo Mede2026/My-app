@@ -176,8 +176,31 @@ func TestReperageDansUneLigne(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if relu != "ligne un\nligne deux" {
+	// Le retour a la ligne traverse tel quel, « \r » compris.
+	if relu != "ligne un\r\nligne deux" {
 		t.Fatalf("deux blocs relus : %q", relu)
+	}
+}
+
+func TestChangementDeChamp(t *testing.T) {
+	// L'utilisateur tape, change de champ, et l'application repose un en-tete.
+	// Le second morceau doit se relire, meme colle au premier sur une ligne.
+	premier := masquer(t, "debut", pass)
+	second := masquer(t, "suite", pass)
+
+	relu, err := DecryptText(premier+second, pass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if relu != "debutsuite" {
+		t.Fatalf("apres un changement de champ : %q", relu)
+	}
+
+	// Et separement, comme dans deux champs distincts.
+	for texte, masque := range map[string]string{"debut": premier, "suite": second} {
+		if relu, err := DecryptText(masque, pass); err != nil || relu != texte {
+			t.Fatalf("champ isole %q : %q, %v", texte, relu, err)
+		}
 	}
 }
 

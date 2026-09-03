@@ -20,10 +20,18 @@ import (
 var maskProc = windows.NewCallback(maskHookProc)
 
 type maskTyping struct {
-	app    *App
-	active bool
-	hook   uintptr
-	stream *crypto.Stream
+	app        *App
+	active     bool
+	hook       uintptr
+	stream     *crypto.Stream
+	passphrase string
+
+	// Endroit ou la frappe atterrissait au dernier caractere, et demande de
+	// repartir a zero. Des que l'utilisateur change de champ, de fenetre ou
+	// deplace le curseur, un nouvel en-tete doit etre pose : sans lui, ce qui
+	// suit serait impossible a relire.
+	target       [3]w32.HWND
+	forceRestart bool
 
 	// Touches dont l'appui a ete avale : leur relachement doit l'etre aussi.
 	swallowed map[uint32]bool
@@ -77,7 +85,11 @@ func (m *maskTyping) startWith(passphrase string) {
 		return
 	}
 	m.hook, m.stream, m.active = hook, stream, true
+	m.passphrase = passphrase
 	m.pendingHigh = 0
+	m.forceRestart = false
+	m.target = w32.TypingTarget()
+	w32.MouseClickedSince() // remet le compteur de clics a zero
 	clear(m.swallowed)
 	m.app.setTrayState(true)
 }
@@ -135,6 +147,11 @@ func maskHookProc(code int, wparam, lparam uintptr) uintptr {
 		case w32.VK_BACK:
 			m.stream.Rewind() // le caractere efface libere sa place
 			return passThrough(app, code, wparam, lparam)
+		case w32.VK_LEFT, w32.VK_RIGHT, w32.VK_UP, w32.VK_DOWN,
+			w32.VK_HOME, w32.VK_END, w32.VK_PRIOR, w32.VK_NEXT, w32.VK_TAB:
+			// Le curseur bouge : la suite ne prolonge plus le texte precedent.
+			m.forceRestart = true
+			return passThrough(app, code, wparam, lparam)
 		case w32.VK_RETURN:
 			// Le retour a la ligne traverse tel quel et ne coupe pas le texte :
 			// l'en-tete n'est ecrit qu'une fois, au debut de la frappe.
@@ -152,11 +169,33 @@ func maskHookProc(code int, wparam, lparam uintptr) uintptr {
 			}
 			return passThrough(app, code, wparam, lparam)
 		}
-		w32.SendString(m.stream.Mask(letter))
+		w32.SendString(m.header() + m.stream.Mask(letter))
 		m.swallowed[event.VkCode] = true
 		return 1
 	}
 	return passThrough(app, code, wparam, lparam)
+}
+
+// header rend l'en-tete a ecrire avant le prochain caractere, ou "" si la
+// frappe continue au meme endroit.
+//
+// C'est ce qui repare le cas le plus courant : ecrire dans un champ, passer a un
+// autre, et continuer a taper. Sans nouvel en-tete, le second champ serait
+// impossible a relire.
+func (m *maskTyping) header() string {
+	target := w32.TypingTarget()
+	moved := target != m.target || w32.MouseClickedSince() || m.forceRestart
+	m.target, m.forceRestart = target, false
+	if !moved {
+		return ""
+	}
+
+	stream, err := crypto.NewStream(m.passphrase)
+	if err != nil {
+		return "" // on continue avec la suite en cours plutot que de tout perdre
+	}
+	m.stream = stream
+	return stream.Marker()
 }
 
 // letterFor traduit une touche en caractere complet.

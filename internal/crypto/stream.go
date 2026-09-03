@@ -21,6 +21,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // legacyPrefixStream etait ecrit devant les textes des premieres versions. Il
@@ -30,14 +31,14 @@ const legacyPrefixStream = "MC2~"
 const (
 	streamNonceLen   = 3 // octets tires au hasard a chaque activation
 	streamNonceChars = 4 // leur ecriture dans l'alphabet maison
-	// Deux caracteres de controle, calcules a partir de la cle et du tirage.
+	// Trois caracteres de controle, calcules a partir de la cle et du tirage.
 	// Ils ne se voient pas : ils ressemblent au reste. Ils permettent de
-	// reconnaitre le debut du texte a coup sur, et de dire « ce n'est pas pour
-	// moi » plutot que de rendre n'importe quoi.
-	streamCheckChars = 2
-	// Les deux premiers octets de la suite chiffrante servent au controle : le
+	// reconnaitre un debut de texte a coup sur, meme au milieu d'une ligne, ce
+	// qui arrive des que l'utilisateur change de champ en cours de frappe.
+	streamCheckChars = 3
+	// Les trois premiers octets de la suite chiffrante servent au controle : le
 	// texte lui-meme commence apres.
-	streamTextStart = 2
+	streamTextStart = 3
 
 	// StreamHeaderChars est la longueur de l'en-tete invisible, ecrit une seule
 	// fois au debut de la frappe : les retours a la ligne ne le repetent pas.
@@ -122,14 +123,35 @@ func NewStream(passphrase string) (*Stream, error) {
 	return stream, nil
 }
 
-func newStreamWithNonce(passphrase string, nonce []byte) (*Stream, error) {
+// blockCache evite de reconstruire le chiffreur AES a chaque essai : la
+// relecture teste un en-tete a chaque position du texte.
+var blockCache = struct {
+	sync.Mutex
+	blocks map[string]cipher.Block
+}{blocks: make(map[string]cipher.Block)}
+
+func streamBlock(passphrase string) (cipher.Block, error) {
 	key, err := DeriveKey(passphrase, streamSalt)
 	if err != nil {
 		return nil, err
 	}
+	blockCache.Lock()
+	defer blockCache.Unlock()
+	if block, ok := blockCache.blocks[string(key)]; ok {
+		return block, nil
+	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, fmt.Errorf("AES : %w", err)
+	}
+	blockCache.blocks[string(key)] = block
+	return block, nil
+}
+
+func newStreamWithNonce(passphrase string, nonce []byte) (*Stream, error) {
+	block, err := streamBlock(passphrase)
+	if err != nil {
+		return nil, err
 	}
 	iv := make([]byte, block.BlockSize())
 	copy(iv, nonce)
@@ -215,70 +237,35 @@ func (s *Stream) unmask(letter rune) (int, bool) {
 
 // decryptStream relit un texte tape en frappe masquee.
 //
-// Le texte peut tenir sur plusieurs lignes : l'en-tete n'est ecrit qu'une fois,
-// au debut de la frappe, et les retours a la ligne n'y changent rien. Si une
-// ligne commence par un nouvel en-tete valable, c'est qu'un autre bloc commence
-// la : la lecture repart alors de zero.
-//
-// L'erreur ErrNotFound signale que ce texte n'en est pas un : les caracteres de
-// controle ne correspondent pas.
+// Le texte est parcouru caractere par caractere. A chaque position, on regarde
+// si un en-tete valable commence la : c'est le cas au debut de la frappe, mais
+// aussi chaque fois que l'utilisateur a change de champ ou deplace le curseur,
+// car l'application repose alors un en-tete. Entre deux en-tetes, tout est
+// dechiffre a la suite ; les caracteres etrangers, retours a la ligne compris,
+// traversent sans rien consommer.
 func decryptStream(token, passphrase string) (string, error) {
 	if passphrase == "" {
 		return "", ErrNoPassphrase
 	}
+	letters := []rune(strings.TrimPrefix(token, legacyPrefixStream))
 
 	var plain strings.Builder
 	var stream *Stream
+	found := false
 
-	for numero, line := range strings.Split(strings.TrimPrefix(token, legacyPrefixStream), "\n") {
-		line = strings.TrimSuffix(line, "\r")
-		if numero > 0 {
-			plain.WriteString("\n")
+	for position := 0; position < len(letters); position++ {
+		if fresh, ok := openHeader(letters, position, passphrase); ok {
+			stream, found = fresh, true
+			position += StreamHeaderChars - 1 // la boucle avance d'un cran
+			continue
 		}
-		if fresh, rest, ok := openHeader(line, passphrase); ok {
-			stream, line = fresh, rest
-		} else if stream == nil {
-			return "", ErrNotFound
+		letter := letters[position]
+		index, known := 0, false
+		if stream != nil {
+			index, known = stream.unmask(letter)
 		}
-		plain.WriteString(stream.decodeLine(line))
-	}
-	if stream == nil {
-		return "", ErrNotFound
-	}
-	return plain.String(), nil
-}
-
-// openHeader lit l'en-tete invisible au debut d'une ligne : le tirage
-// aleatoire, puis les caracteres de controle. Le dernier resultat est faux si
-// la ligne ne commence pas par un en-tete valable.
-func openHeader(line, passphrase string) (*Stream, string, bool) {
-	letters := []rune(line)
-	if len(letters) < StreamHeaderChars {
-		return nil, line, false
-	}
-	nonce, err := encoding.DecodeString(string(letters[:streamNonceChars]))
-	if err != nil || len(nonce) != streamNonceLen {
-		return nil, line, false
-	}
-	stream, err := newStreamWithNonce(passphrase, nonce)
-	if err != nil {
-		return nil, line, false
-	}
-	if string(letters[streamNonceChars:StreamHeaderChars]) != stream.marker[streamNonceChars:] {
-		return nil, line, false // pas notre texte, ou pas la bonne phrase secrete
-	}
-	return stream, string(letters[StreamHeaderChars:]), true
-}
-
-// decodeLine relit une ligne avec la suite chiffrante en cours.
-func (s *Stream) decodeLine(line string) string {
-	body := []rune(line)
-	var plain strings.Builder
-
-	for position := 0; position < len(body); position++ {
-		index, known := s.unmask(body[position])
 		if !known {
-			plain.WriteRune(body[position]) // caractere etranger au texte masque
+			plain.WriteRune(letter) // caractere etranger au texte masque
 			continue
 		}
 		if index != escapeIndex {
@@ -286,19 +273,44 @@ func (s *Stream) decodeLine(line string) string {
 			continue
 		}
 		// Echappement : les trois caracteres suivants portent le numero Unicode.
-		if position+3 >= len(body) {
+		if position+3 >= len(letters) {
 			break
 		}
 		code := uint32(0)
 		for morceau := 0; morceau < 3; morceau++ {
 			position++
-			digit, known := s.unmask(body[position])
+			digit, known := stream.unmask(letters[position])
 			if !known {
-				return plain.String()
+				break
 			}
 			code = code*uint32(alphabetLen) + uint32(digit)
 		}
 		plain.WriteRune(rune(code))
 	}
-	return plain.String()
+
+	if !found {
+		return "", ErrNotFound
+	}
+	return plain.String(), nil
+}
+
+// openHeader regarde si un en-tete invisible commence a cette position : le
+// tirage aleatoire, puis les caracteres de controle calcules a partir de la cle.
+func openHeader(letters []rune, position int, passphrase string) (*Stream, bool) {
+	if position+StreamHeaderChars > len(letters) {
+		return nil, false
+	}
+	nonce, err := encoding.DecodeString(string(letters[position : position+streamNonceChars]))
+	if err != nil || len(nonce) != streamNonceLen {
+		return nil, false
+	}
+	stream, err := newStreamWithNonce(passphrase, nonce)
+	if err != nil {
+		return nil, false
+	}
+	check := string(letters[position+streamNonceChars : position+StreamHeaderChars])
+	if check != stream.marker[streamNonceChars:] {
+		return nil, false // pas notre texte, ou pas la bonne phrase secrete
+	}
+	return stream, true
 }

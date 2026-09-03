@@ -37,6 +37,20 @@ const (
 	// le panneau de Windows.
 	VK_PACKET = 0xE7
 
+	VK_LBUTTON = 0x01
+	VK_RBUTTON = 0x02
+
+	// Touches qui deplacent le curseur : apres elles, ce qui est tape ne suit
+	// plus le texte precedent.
+	VK_PRIOR = 0x21
+	VK_NEXT  = 0x22
+	VK_END   = 0x23
+	VK_HOME  = 0x24
+	VK_LEFT  = 0x25
+	VK_UP    = 0x26
+	VK_RIGHT = 0x27
+	VK_DOWN  = 0x28
+
 	// Signature attachee a nos propres frappes simulees, pour les reconnaitre
 	// quand elles repassent par le hook.
 	injectedSignature = 0x43427542 // « CBuB »
@@ -230,4 +244,42 @@ func SendUserKeys(text string) {
 func KeyboardLayoutName() string {
 	layout := foregroundLayout()
 	return fmt.Sprintf("0x%08X", uint32(layout))
+}
+
+// GUIThreadInfo decrit ou va la frappe : fenetre active, controle qui a le
+// focus, et curseur de texte.
+type GUIThreadInfo struct {
+	Size      uint32
+	Flags     uint32
+	Active    HWND
+	Focus     HWND
+	Capture   HWND
+	MenuOwner HWND
+	MoveSize  HWND
+	Caret     HWND
+	CaretRect RECT
+}
+
+var procGetGUIThreadInfo = user32.NewProc("GetGUIThreadInfo")
+
+// TypingTarget rend l'endroit ou la frappe atterrit actuellement. Comparer deux
+// resultats suffit a savoir si l'utilisateur a change de champ ou de fenetre.
+func TypingTarget() [3]HWND {
+	var info GUIThreadInfo
+	info.Size = uint32(unsafe.Sizeof(info))
+	if ok, _, _ := procGetGUIThreadInfo.Call(0, uintptr(unsafe.Pointer(&info))); ok == 0 {
+		return [3]HWND{}
+	}
+	return [3]HWND{info.Active, info.Focus, info.Caret}
+}
+
+// MouseClickedSince indique qu'un bouton de la souris a ete presse depuis le
+// dernier appel : le curseur de texte a donc pu etre deplace.
+//
+// Le bit de poids faible rendu par GetAsyncKeyState signifie « presse depuis la
+// derniere consultation ».
+func MouseClickedSince() bool {
+	left, _, _ := procGetAsyncKeyState.Call(VK_LBUTTON)
+	right, _, _ := procGetAsyncKeyState.Call(VK_RBUTTON)
+	return left&1 != 0 || right&1 != 0
 }

@@ -358,6 +358,15 @@ func (s *settingsWindow) startSelfTest() {
 		return
 	}
 
+	// Deuxieme verification : deux morceaux tapes dans deux champs differents,
+	// donc deux en-tetes, colles bout a bout.
+	deuxChamps := attendu + attendu
+	if relu, err := crypto.DecryptText(deuxChamps, passphrase); err != nil ||
+		relu != selfTestPhrase+selfTestPhrase {
+		s.report("Changement de champ : ÉCHEC\r\nrelu : " + relu + "\r\n" + errorText(err))
+		return
+	}
+
 	// 2. L'interception du clavier, dans le champ de l'atelier.
 	w32.SetWindowText(s.workshopIn, "")
 	w32.SetWindowText(s.workshopOut, "Test en cours...")
@@ -384,6 +393,7 @@ func (s *settingsWindow) finishSelfTest() {
 
 	lignes := []string{
 		"Chiffrement interne : OK",
+		"Changement de champ : OK",
 		"Interception du clavier : OK",
 		"Disposition clavier : " + w32.KeyboardLayoutName(),
 		"Tapé      : " + selfTestPhrase,
