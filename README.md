@@ -186,9 +186,11 @@ imprévisible, et chaque octet décale la lettre tapée dans l'alphabet. Les dix
 premiers caractères de la ligne portent le tirage aléatoire de la session et deux
 caractères de contrôle. Ils ne se voient pas : ils ressemblent au reste.
 
-Un emoji, ou tout caractère absent de la liste, s'écrit en quatre caractères
-masqués : un signal d'échappement, puis son numéro Unicode. C'est le seul endroit
-où un caractère tapé n'en donne pas exactement un.
+L'alphabet couvre les lettres, les chiffres, l'espace, la ponctuation courante et
+les dix accents les plus fréquents en français. Un emoji, une majuscule accentuée
+ou tout autre caractère s'écrit en quatre caractères masqués : un signal
+d'échappement, puis son numéro Unicode. C'est le seul endroit où un caractère tapé
+n'en donne pas exactement un.
 
 ## Marqueur ici, rien là
 
@@ -200,9 +202,16 @@ l'application le retrouve dans votre sélection sans hésiter.
 
 Une ligne tapée en **frappe masquée** ne porte **aucun marqueur**. Elle ne doit
 ressembler à rien : personne ne doit deviner ce que vous êtes en train de faire en
-regardant votre écran. Les dix premiers caractères de la ligne portent le tirage
-aléatoire et deux caractères de contrôle, mais ils se lisent comme le reste du
-charabia.
+regardant votre écran. Le texte n'utilise que des caractères ordinaires du
+clavier, sans accent ni symbole exotique : ça ressemble à `fPyC@.WE^E`, pas à du
+texte abîmé.
+
+Cinq caractères de plus s'ajoutent en début de ligne : quatre pour le tirage
+aléatoire de la session, un pour le contrôle. Ils ne se voient pas, ils se lisent
+comme le reste. Ils coûtent peu et ils évitent le pire défaut possible : sans
+tirage, deux fois la même phrase donnerait exactement le même affichage, et
+quelqu'un qui récolterait une vingtaine de vos lignes pourrait les casser sans
+connaître votre phrase secrète.
 
 Sans marqueur, comment l'application s'y retrouve ? Elle **essaie** de relire la
 ligne. Les deux caractères de contrôle, calculés à partir de votre clé, lui disent

@@ -28,16 +28,16 @@ import (
 const legacyPrefixStream = "MC2~"
 
 const (
-	streamNonceLen   = 6 // octets tires au hasard a chaque activation
-	streamNonceChars = 8 // leur ecriture dans l'alphabet maison
-	// Deux caracteres de controle, calcules a partir de la cle et du tirage.
-	// Ils ne se voient pas : ils ressemblent au reste du charabia. Ils
-	// permettent a l'application de reconnaitre son propre texte, et de dire
-	// « ce n'est pas pour moi » plutot que de rendre n'importe quoi.
-	streamCheckChars = 2
-	// Les deux premiers octets de la suite chiffrante servent au controle : le
-	// texte lui-meme commence apres.
-	streamTextStart = 2
+	streamNonceLen   = 3 // octets tires au hasard a chaque activation
+	streamNonceChars = 4 // leur ecriture dans l'alphabet maison
+	// Un caractere de controle, calcule a partir de la cle et du tirage. Il ne
+	// se voit pas : il ressemble au reste. Il permet a l'application de
+	// reconnaitre son propre texte, et de dire « ce n'est pas pour moi » plutot
+	// que de rendre n'importe quoi.
+	streamCheckChars = 1
+	// Le premier octet de la suite chiffrante sert au controle : le texte
+	// lui-meme commence apres.
+	streamTextStart = 1
 )
 
 // Sel fixe : le nonce, lui, change a chaque activation. Un sel constant permet
@@ -46,20 +46,22 @@ const (
 var streamSalt = []byte("CryptoBulle-flux")
 
 // inputRunes : ce que l'utilisateur peut taper. outputRunes : ce qui s'affiche.
-// L'ensemble de sortie ne contient ni espace ni retour a la ligne, pour que le
-// texte masque reste un bloc facile a selectionner.
+//
+// La sortie n'utilise que des caracteres ordinaires du clavier, sans accent ni
+// symbole exotique : le texte masque ressemble a « hvd=a », pas a du charabia
+// abime. Ni espace ni retour a la ligne, pour qu'il reste un bloc facile a
+// selectionner.
 //
 // La sortie compte une place de plus que l'entree : cette place supplementaire
-// sert d'echappement. Elle annonce un caractere qui n'est pas dans la liste,
-// emoji compris ; son numero Unicode suit alors sur trois caracteres masques.
-// Rien ne sort donc jamais en clair.
+// sert d'echappement. Elle annonce un caractere absent de la liste, emoji et
+// majuscules accentuees compris ; son numero Unicode suit alors sur trois
+// caracteres masques. Rien ne sort donc jamais en clair.
 const (
 	inputRunes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 " +
-		".,;:!?'\"-()[]{}/\\@#&+=%*_<>|~^$" +
-		"éèêëàâäùûüçîïôöÿœæÉÈÊÀÂÙÛÇÎÔŒÆ°§µ"
+		".,;:!?'\"-()/@#&+=%*_" +
+		"éèàçùâêîôû"
 	outputRunes = "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`" +
-		"abcdefghijklmnopqrstuvwxyz{|}~" +
-		"éèêëàâäùûüçîïôöÿœæÉÈÊÀÂÙÛÇÎÔŒÆ°§µ€"
+		"abcdefghijklmnopqrstuvwxyz{|}~"
 )
 
 var (
@@ -162,14 +164,19 @@ func (s *Stream) Mask(typed rune) string {
 		return string(s.maskIndex(index))
 	}
 
-	// Echappement : la place reservee, puis le numero Unicode sur trois
-	// morceaux de sept bits.
+	// Echappement : la place reservee, puis le numero Unicode ecrit sur trois
+	// caracteres. Les tres rares points de code au-dela de 830 583 (zones
+	// privees d'Unicode) sont remplaces par le caractere « inconnu ».
 	code := uint32(typed)
+	if code >= uint32(alphabetLen*alphabetLen*alphabetLen) {
+		code = 0xFFFD
+	}
+	base := uint32(alphabetLen)
 	masked := []rune{
 		s.maskIndex(escapeIndex),
-		s.maskIndex(int(code >> 14 & 0x7F)),
-		s.maskIndex(int(code >> 7 & 0x7F)),
-		s.maskIndex(int(code & 0x7F)),
+		s.maskIndex(int(code / (base * base) % base)),
+		s.maskIndex(int(code / base % base)),
+		s.maskIndex(int(code % base)),
 	}
 	return string(masked)
 }
@@ -251,7 +258,7 @@ func decryptStream(token, passphrase string) (string, error) {
 			if !known {
 				return plain.String(), nil
 			}
-			code = code<<7 | uint32(digit&0x7F)
+			code = code*uint32(alphabetLen) + uint32(digit)
 		}
 		plain.WriteRune(rune(code))
 	}
