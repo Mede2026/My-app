@@ -23,11 +23,13 @@ const (
 
 	hotkeyDecrypt = 1
 	hotkeyEncrypt = 2
+	hotkeyMask    = 3
 
 	menuSettings = 1
 	menuEncrypt  = 2
 	menuDecrypt  = 3
-	menuQuit     = 4
+	menuMask     = 4
+	menuQuit     = 5
 )
 
 // App tient l'etat de l'application. Une seule instance vit par processus.
@@ -35,12 +37,14 @@ type App struct {
 	mu  sync.RWMutex
 	cfg config.Config
 
-	hwnd     w32.HWND
-	trayIcon w32.HICON
-	dpi      int32
+	hwnd           w32.HWND
+	trayIcon       w32.HICON
+	trayIconActive w32.HICON
+	dpi            int32
 
 	bubble   *bubbleWindow
 	settings *settingsWindow
+	mask     *maskTyping
 
 	tasks chan func()
 	busy  atomic.Bool
@@ -79,9 +83,12 @@ func Run() error {
 		return err
 	}
 	app.dpi = w32.DPI(app.hwnd)
-	app.trayIcon = loadIcon(w32.GetSystemMetrics(w32.SM_CXSMICON))
+	iconSize := w32.GetSystemMetrics(w32.SM_CXSMICON)
+	app.trayIcon = loadIcon(iconSize)
+	app.trayIconActive = loadActiveIcon(iconSize)
 	app.addTrayIcon()
 	app.bubble = newBubbleWindow(app)
+	app.mask = newMaskTyping(app)
 
 	if message := app.applyHotkeys(); message != "" {
 		w32.MessageBox(0, message+"\n\nChoisissez d'autres raccourcis dans les reglages.",
@@ -96,8 +103,9 @@ func Run() error {
 	} else {
 		app.bubble.show(appName+" est actif",
 			hotkey.Pretty(cfg.HotkeyEncrypt)+" : chiffrer la selection\n"+
-				hotkey.Pretty(cfg.HotkeyDecrypt)+" : dechiffrer la selection",
-			kindInfo, 6)
+				hotkey.Pretty(cfg.HotkeyDecrypt)+" : dechiffrer la selection\n"+
+				hotkey.Pretty(cfg.HotkeyMask)+" : frappe masquee",
+			kindInfo, 8)
 	}
 
 	app.loop()
@@ -120,6 +128,8 @@ func warmUp(passphrase string, salt []byte) {
 		return
 	}
 	_, _ = crypto.DeriveKey(passphrase, salt)
+	// La frappe masquee utilise une seconde cle : autant la calculer aussi.
+	_, _ = crypto.NewStream(passphrase)
 }
 
 // --- reglages partages entre fils -------------------------------------------
@@ -204,6 +214,10 @@ func serviceWndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			app.trigger(app.actionDecrypt)
 		case hotkeyEncrypt:
 			app.trigger(app.actionEncrypt)
+		case hotkeyMask:
+			// Traite ici meme, sans passer par un fil de fond : le hook clavier
+			// doit vivre sur le fil qui tient la boucle de messages.
+			app.mask.toggle()
 		}
 		return 0
 
@@ -217,6 +231,7 @@ func serviceWndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		return 0
 
 	case w32.WM_DESTROY:
+		app.mask.stop()
 		app.removeTrayIcon()
 		w32.PostQuitMessage(0)
 		return 0
@@ -241,8 +256,10 @@ func (a *App) loop() {
 }
 
 func (a *App) quit() {
+	a.mask.stop()
 	w32.UnregisterHotKey(a.hwnd, hotkeyDecrypt)
 	w32.UnregisterHotKey(a.hwnd, hotkeyEncrypt)
+	w32.UnregisterHotKey(a.hwnd, hotkeyMask)
 	w32.DestroyWindow(a.hwnd)
 }
 
@@ -263,6 +280,21 @@ func (a *App) addTrayIcon() {
 	w32.ShellNotifyIcon(w32.NIM_ADD, &data)
 }
 
+// setTrayState change l'icone et l'infobulle selon que la frappe masquee est
+// active ou non : c'est le seul indicateur permanent de l'etat du mode.
+func (a *App) setTrayState(masking bool) {
+	data := a.trayData()
+	data.Flags = w32.NIF_ICON | w32.NIF_TIP
+	data.Icon = a.trayIcon
+	tip := appName + " " + appVersion
+	if masking {
+		data.Icon = a.trayIconActive
+		tip = appName + " - frappe masquee active"
+	}
+	copy(data.Tip[:], windows.StringToUTF16(tip))
+	w32.ShellNotifyIcon(w32.NIM_MODIFY, &data)
+}
+
 func (a *App) removeTrayIcon() {
 	data := a.trayData()
 	w32.ShellNotifyIcon(w32.NIM_DELETE, &data)
@@ -274,6 +306,11 @@ func (a *App) showTrayMenu() {
 	w32.AppendMenu(menu, w32.MF_SEPARATOR, 0, "")
 	w32.AppendMenu(menu, w32.MF_STRING, menuEncrypt, "Chiffrer la selection")
 	w32.AppendMenu(menu, w32.MF_STRING, menuDecrypt, "Dechiffrer la selection")
+	maskLabel := "Frappe masquee : allumer"
+	if a.mask.active {
+		maskLabel = "Frappe masquee : eteindre"
+	}
+	w32.AppendMenu(menu, w32.MF_STRING, menuMask, maskLabel)
 	w32.AppendMenu(menu, w32.MF_SEPARATOR, 0, "")
 	w32.AppendMenu(menu, w32.MF_STRING, menuQuit, "Quitter")
 
@@ -291,6 +328,8 @@ func (a *App) showTrayMenu() {
 		a.trigger(a.actionEncrypt)
 	case menuDecrypt:
 		a.trigger(a.actionDecrypt)
+	case menuMask:
+		a.mask.toggle()
 	case menuQuit:
 		a.quit()
 	}
@@ -304,6 +343,7 @@ func (a *App) applyHotkeys() string {
 	cfg := a.config()
 	w32.UnregisterHotKey(a.hwnd, hotkeyDecrypt)
 	w32.UnregisterHotKey(a.hwnd, hotkeyEncrypt)
+	w32.UnregisterHotKey(a.hwnd, hotkeyMask)
 
 	for _, entry := range []struct {
 		id    int32
@@ -311,6 +351,7 @@ func (a *App) applyHotkeys() string {
 	}{
 		{hotkeyDecrypt, cfg.HotkeyDecrypt},
 		{hotkeyEncrypt, cfg.HotkeyEncrypt},
+		{hotkeyMask, cfg.HotkeyMask},
 	} {
 		parsed, err := hotkey.Parse(entry.combo)
 		if err != nil {
@@ -390,18 +431,15 @@ func (a *App) actionEncrypt() {
 	if cfg.RestoreClipboard {
 		restore = previous
 	}
-	message := "Le texte chiffre est dans le presse-papiers (Ctrl+V pour le coller)."
 	if cfg.AutoPaste {
 		err = pasteText(token, restore)
-		message = "Le texte chiffre a remplace votre selection."
 	} else {
 		err = setClipboardText(token)
 	}
 	if err != nil {
 		a.showBubble("Erreur", capitalize(err.Error()), kindError, -1)
-		return
 	}
-	a.showBubble("Texte chiffre", message, kindSuccess, 4)
+	// Aucune bulle quand tout se passe bien : le texte colle se voit deja.
 }
 
 func (a *App) requirePassphrase(cfg config.Config) bool {

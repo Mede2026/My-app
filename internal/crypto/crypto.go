@@ -155,12 +155,15 @@ func Encrypt(plaintext, passphrase string, salt []byte) (string, error) {
 	return Prefix + encoding.EncodeToString(append(header, sealed...)), nil
 }
 
-// Decrypt verifie et dechiffre un jeton « MC1~... ».
+// Decrypt relit un texte chiffre, dans l'un ou l'autre des deux formats.
 func Decrypt(token, passphrase string) (string, error) {
 	if passphrase == "" {
 		return "", ErrNoPassphrase
 	}
 	token = strings.TrimSpace(token)
+	if strings.HasPrefix(token, Prefix2) {
+		return decryptStream(token, passphrase)
+	}
 	if !strings.HasPrefix(token, Prefix) {
 		return "", ErrNotAToken
 	}
@@ -207,11 +210,16 @@ func newGCM(passphrase string, salt []byte) (cipher.AEAD, error) {
 
 // FindToken renvoie le premier jeton CryptoBulle contenu dans text, ou "".
 //
-// Les espaces et retours a la ligne sont retires au prealable : un jeton coupe
-// sur plusieurs lignes par un logiciel de courriel reste donc reconnu.
+// Les deux formats sont reconnus : la frappe masquee (MC2), cherchee ligne par
+// ligne, puis les messages ordinaires (MC1). Pour ces derniers, les espaces et
+// retours a la ligne sont retires au prealable, si bien qu'un jeton coupe en
+// plusieurs morceaux par un logiciel de courriel reste reconnu.
 func FindToken(text string) string {
 	if text == "" {
 		return ""
+	}
+	if token := findStreamToken(text); token != "" {
+		return token
 	}
 	return tokenRe.FindString(spaces.Replace(text))
 }

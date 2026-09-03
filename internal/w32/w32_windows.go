@@ -145,6 +145,7 @@ const (
 	INPUT_KEYBOARD     = 1
 	KEYEVENTF_KEYUP    = 0x0002
 	NIM_ADD            = 0
+	NIM_MODIFY         = 1
 	NIM_DELETE         = 2
 	NIF_MESSAGE        = 0x01
 	NIF_ICON           = 0x02

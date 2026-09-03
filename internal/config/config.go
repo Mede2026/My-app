@@ -18,12 +18,15 @@ import (
 const (
 	DefaultHotkeyDecrypt = "ctrl+alt+d"
 	DefaultHotkeyEncrypt = "ctrl+alt+e"
+	DefaultHotkeyMask    = "ctrl+alt+m"
 )
 
 // Config regroupe tous les reglages modifiables par l'utilisateur.
 type Config struct {
 	HotkeyDecrypt string `json:"hotkey_decrypt"`
 	HotkeyEncrypt string `json:"hotkey_encrypt"`
+	// Raccourci du mode frappe masquee.
+	HotkeyMask string `json:"hotkey_mask"`
 	// Phrase secrete protegee (voir seal) ; jamais en clair dans le fichier.
 	PassphraseSealed string `json:"passphrase_sealed"`
 	// Duree d'affichage de la bulle, en secondes (0 = fermeture manuelle).
@@ -44,6 +47,7 @@ func Default() Config {
 	return Config{
 		HotkeyDecrypt:    DefaultHotkeyDecrypt,
 		HotkeyEncrypt:    DefaultHotkeyEncrypt,
+		HotkeyMask:       DefaultHotkeyMask,
 		BubbleSeconds:    12,
 		AutoPaste:        true,
 		RestoreClipboard: true,
@@ -87,6 +91,9 @@ func Load() Config {
 	}
 	if config.HotkeyEncrypt == "" {
 		config.HotkeyEncrypt = DefaultHotkeyEncrypt
+	}
+	if config.HotkeyMask == "" {
+		config.HotkeyMask = DefaultHotkeyMask
 	}
 	if config.Theme == "" {
 		config.Theme = "sombre"

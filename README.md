@@ -6,7 +6,7 @@ Vous sélectionnez du texte, vous faites `Ctrl+Alt+E` : le texte est remplacé p
 message chiffré. Vous sélectionnez ce message, vous faites `Ctrl+Alt+D` : une petite
 **bulle** apparaît près de la souris et affiche le texte d'origine.
 
-Un seul fichier `CryptoBulle.exe` de **2,86 Mo**. Rien à installer.
+Un seul fichier `CryptoBulle.exe` de **2,90 Mo**. Rien à installer.
 
 ---
 
@@ -16,6 +16,7 @@ Un seul fichier `CryptoBulle.exe` de **2,86 Mo**. Rien à installer.
 | --- | --- |
 | `Ctrl+Alt+E` | Chiffre la sélection et la colle à la place |
 | `Ctrl+Alt+D` | Déchiffre la sélection et l'affiche dans une bulle |
+| `Ctrl+Alt+M` | Allume ou éteint la **frappe masquée** |
 
 - L'application vit dans la **zone de notification**, à côté de l'horloge. Clic droit :
   réglages, chiffrer, déchiffrer, quitter.
@@ -23,6 +24,7 @@ Un seul fichier `CryptoBulle.exe` de **2,86 Mo**. Rien à installer.
   Boutons **Copier** et **Fermer**, touche `Échap`, déplaçable à la souris.
 - L'ancien contenu du presse-papiers est remis en place après l'opération.
 - La fenêtre de réglages contient un **atelier** pour chiffrer ou déchiffrer à la main.
+- Le chiffrement ne dit rien quand il réussit : le texte collé se voit déjà.
 
 ## Installation
 
@@ -80,6 +82,44 @@ justement d'avoir tout dans un seul programme.
    qui ne réveille l'application que pour les deux raccourcis déclarés et les clics
    sur l'icône. Aucune boucle d'attente, aucun réveil périodique.
 
+## La frappe masquée
+
+`Ctrl+Alt+M` allume un mode où **rien de ce que vous tapez n'apparaît en clair**.
+Chaque touche est interceptée avant d'atteindre le logiciel et remplacée à l'écran
+par un caractère chiffré. Une lettre tapée donne un caractère affiché, en direct,
+dans Word, un navigateur, une messagerie, n'importe où.
+
+Quelqu'un qui regarde par-dessus votre épaule pendant que vous écrivez ne voit
+jamais les vraies lettres. `Ctrl+Alt+D` sur le résultat le relit normalement,
+c'est le même raccourci que pour les messages ordinaires.
+
+- L'icône près de l'horloge passe à l'**ambre** tant que le mode est actif. C'est
+  le seul indicateur, il n'y a pas de fenêtre qui s'ouvre : elle volerait le
+  curseur au logiciel dans lequel vous écrivez.
+- Le **retour arrière** efface le caractère et libère sa place, comme d'habitude.
+- La touche **Entrée** commence une nouvelle ligne, avec son propre marqueur :
+  chaque ligne se relit indépendamment.
+- **Échap** ou `Ctrl+Alt+M` éteint le mode.
+- Les raccourcis du système continuent de fonctionner : `Ctrl+S`, `Alt+Tab` et
+  compagnie passent sans être touchés. `AltGr` reste une touche d'écriture.
+
+### Ce que ce mode ne fait pas
+
+- Il **ne fonctionne pas** dans une fenêtre lancée en administrateur, ni dans
+  certains jeux. Windows interdit à une application ordinaire d'intercepter les
+  touches destinées à une fenêtre plus privilégiée.
+- Il **protège moins bien** que le mode ordinaire. Chiffrer lettre par lettre est
+  un chiffrement par flux, sans signature : la longueur du texte reste visible et
+  une mauvaise phrase secrète donne du charabia au lieu d'une erreur claire. Pour
+  un vrai secret, chiffrez le message entier avec `Ctrl+Alt+E`.
+- Ne **déplacez pas le curseur** pendant la frappe. Les flèches et la souris ne
+  sont pas suivies : le texte serait mélangé.
+- Certains **antivirus** surveillent les programmes qui interceptent le clavier.
+  Le vôtre peut demander confirmation la première fois.
+
+Rien n'est enregistré. La touche est traduite puis oubliée, et l'interception
+n'existe que pendant que le mode est allumé.
+
 ## Une interface qui ne fait pas datée
 
 Une application Win32 a l'air vieille pour deux raisons précises, corrigées ici.
@@ -112,7 +152,7 @@ La bulle, elle, est entièrement dessinée :
 Tout cela n'ajoute que 10 Ko à l'exécutable : le dessin utilise des fonctions déjà
 présentes dans le système.
 
-## Le format « MC1 », propre à l'application
+## Les deux formats, propres à l'application
 
 Un message chiffré ressemble à ceci :
 
@@ -135,6 +175,12 @@ sert à rien sans la bonne phrase secrète.
 Le format n'a pas changé depuis la version Python. Un test automatique déchiffre un
 message produit par l'ancienne version, pour garantir que vos anciens messages
 restent lisibles.
+
+La frappe masquée utilise un second format, `MC2~`, qui doit produire un caractère
+dès que vous en tapez un. AES en mode compteur fabrique une suite d'octets
+imprévisible, et chaque octet décale la lettre tapée dans l'alphabet. Le marqueur
+de douze caractères en début de ligne contient le tirage aléatoire de la session,
+ce qui fait que la même phrase tapée deux fois ne donne jamais le même affichage.
 
 ### Petit lexique
 
@@ -183,11 +229,11 @@ conservés.
 
 ```
 cmd/cryptobulle/      point d'entrée, manifeste et icône de l'exécutable
-internal/crypto/      format MC1 : scrypt, AES-GCM, jetons, détection
+internal/crypto/      formats MC1 et MC2 : scrypt, AES-GCM, chiffrement par flux
 internal/hotkey/      lecture des combinaisons (« ctrl+alt+d »)
 internal/config/      réglages JSON, phrase secrète protégée par DPAPI
 internal/w32/         appels aux API de Windows, dessin lissé
-internal/app/         boucle de messages, bulle, réglages, icône, actions
+internal/app/         boucle de messages, bulle, réglages, icône, frappe masquée
 scripts/              build.sh (compilation croisée), make_icon.py (icône)
 ```
 

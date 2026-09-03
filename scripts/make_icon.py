@@ -14,21 +14,24 @@ import struct
 import zlib
 from pathlib import Path
 
-TARGET = Path(__file__).resolve().parent.parent / "internal" / "app" / "assets" / "icon.ico"
+ASSETS = Path(__file__).resolve().parent.parent / "internal" / "app" / "assets"
+TARGET = ASSETS / "icon.ico"
+TARGET_ACTIVE = ASSETS / "icon-active.ico"
 SIZES = (16, 24, 32, 48, 64, 128, 256)
 
 BLUE = (63, 140, 255)
+AMBER = (245, 158, 11)  # frappe masquee active
 LIGHT = (233, 240, 255)
 SUPERSAMPLE = 4  # on dessine en plus grand puis on reduit : bords lisses
 
 
-def _shape_alpha(x: float, y: float) -> tuple[tuple[int, int, int], float]:
+def _shape_alpha(x: float, y: float, body: tuple[int, int, int]) -> tuple[tuple[int, int, int], float]:
     """Couleur et opacite du cadenas au point (x, y), en coordonnees 0-64."""
     # Anse : anneau ouvert vers le bas.
     ring_x, ring_y, radius, thickness = 32.0, 24.0, 14.0, 3.2
     distance = ((x - ring_x) ** 2 + (y - ring_y) ** 2) ** 0.5
     if y <= ring_y and abs(distance - radius) <= thickness:
-        return BLUE, 1.0
+        return body, 1.0
 
     # Corps : rectangle aux coins arrondis.
     left, top, right, bottom, corner = 12.0, 28.0, 52.0, 56.0, 8.0
@@ -39,11 +42,11 @@ def _shape_alpha(x: float, y: float) -> tuple[tuple[int, int, int], float]:
             # Trou de serrure : rond prolonge d'une fente.
             hole = ((x - 32.0) ** 2 + (y - 40.0) ** 2) ** 0.5 <= 4.2
             slot = 30.6 <= x <= 33.4 and 40.0 <= y <= 50.0
-            return (LIGHT if hole or slot else BLUE), 1.0
-    return BLUE, 0.0
+            return (LIGHT if hole or slot else body), 1.0
+    return body, 0.0
 
 
-def render(size: int) -> bytes:
+def render(size: int, body: tuple[int, int, int] = BLUE) -> bytes:
     """Dessine l'icone en RGBA brut, avec lissage par sur-echantillonnage."""
     rows = []
     step = 64.0 / (size * SUPERSAMPLE)
@@ -55,7 +58,7 @@ def render(size: int) -> bytes:
                 for sub_x in range(SUPERSAMPLE):
                     x = (pixel_x * SUPERSAMPLE + sub_x + 0.5) * step
                     y = (pixel_y * SUPERSAMPLE + sub_y + 0.5) * step
-                    color, opacity = _shape_alpha(x, y)
+                    color, opacity = _shape_alpha(x, y, body)
                     if opacity:
                         red += color[0]
                         green += color[1]
@@ -107,11 +110,16 @@ def build_ico(images: dict[int, bytes]) -> bytes:
     return header + entries + payload
 
 
+def write(path: Path, body: tuple[int, int, int]) -> None:
+    images = {size: to_png(size, render(size, body)) for size in SIZES}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(build_ico(images))
+    print(f"Icone ecrite : {path} ({path.stat().st_size / 1024:.1f} Ko)")
+
+
 def main() -> None:
-    images = {size: to_png(size, render(size)) for size in SIZES}
-    TARGET.parent.mkdir(parents=True, exist_ok=True)
-    TARGET.write_bytes(build_ico(images))
-    print(f"Icone ecrite : {TARGET} ({TARGET.stat().st_size / 1024:.1f} Ko)")
+    write(TARGET, BLUE)
+    write(TARGET_ACTIVE, AMBER)
 
 
 if __name__ == "__main__":

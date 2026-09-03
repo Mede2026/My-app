@@ -20,7 +20,7 @@ const (
 
 	// Taille de la zone utile, en points logiques.
 	contentWidth  = 470
-	contentHeight = 620
+	contentHeight = 650
 )
 
 // Identifiants des controles.
@@ -29,8 +29,10 @@ const (
 	idShowPassphrase
 	idHotkeyDecrypt
 	idHotkeyEncrypt
+	idHotkeyMask
 	idCaptureDecrypt
 	idCaptureEncrypt
+	idCaptureMask
 	idSeconds
 	idAutoPaste
 	idRestore
@@ -64,6 +66,7 @@ type settingsWindow struct {
 
 	passphrase, showPassphrase   w32.HWND
 	hotkeyDecrypt, hotkeyEncrypt w32.HWND
+	hotkeyMask                   w32.HWND
 	seconds                      w32.HWND
 	autoPaste, restore, startup  w32.HWND
 	themeDark, themeLight        w32.HWND
@@ -174,43 +177,46 @@ func (s *settingsWindow) build(instance windows.Handle, scale func(int32) int32)
 	label("Vos correspondants doivent avoir exactement la meme phrase.", 28, 74, 410, 16)
 
 	// --- raccourcis
-	group("Raccourcis clavier", 108, 84)
+	group("Raccourcis clavier", 108, 114)
 	label("Dechiffrer la selection", 28, 134, 160, 20)
 	s.hotkeyDecrypt = edit(idHotkeyDecrypt, w32.ES_READONLY|w32.ES_AUTOHSCROLL, 190, 132, 130, 22)
 	button("Enregistrer...", idCaptureDecrypt, 330, 131, 110)
 	label("Chiffrer la selection", 28, 164, 160, 20)
 	s.hotkeyEncrypt = edit(idHotkeyEncrypt, w32.ES_READONLY|w32.ES_AUTOHSCROLL, 190, 162, 130, 22)
 	button("Enregistrer...", idCaptureEncrypt, 330, 161, 110)
+	label("Frappe masquee", 28, 194, 160, 20)
+	s.hotkeyMask = edit(idHotkeyMask, w32.ES_READONLY|w32.ES_AUTOHSCROLL, 190, 192, 130, 22)
+	button("Enregistrer...", idCaptureMask, 330, 191, 110)
 
 	// --- comportement
-	group("Comportement", 200, 106)
-	label("Duree de la bulle (secondes, 0 = manuel)", 28, 224, 250, 20)
-	s.seconds = edit(idSeconds, w32.ES_AUTOHSCROLL, 284, 222, 50, 22)
-	s.autoPaste = check("Coller automatiquement le texte chiffre", idAutoPaste, 28, 248, 260)
-	s.restore = check("Remettre l'ancien presse-papiers ensuite", idRestore, 28, 270, 260)
-	s.startup = check("Lancer au demarrage de Windows", idStartup, 28, 292, 260)
+	group("Comportement", 230, 106)
+	label("Duree de la bulle (secondes, 0 = manuel)", 28, 254, 250, 20)
+	s.seconds = edit(idSeconds, w32.ES_AUTOHSCROLL, 284, 252, 50, 22)
+	s.autoPaste = check("Coller automatiquement le texte chiffre", idAutoPaste, 28, 278, 260)
+	s.restore = check("Remettre l'ancien presse-papiers ensuite", idRestore, 28, 300, 260)
+	s.startup = check("Lancer au demarrage de Windows", idStartup, 28, 322, 260)
 	s.themeDark = s.add("BUTTON", "Bulle sombre",
-		w32.WS_CHILD|w32.WS_VISIBLE|w32.WS_GROUP|w32.BS_AUTORADIOBUTTON, 300, 248, 130, 20,
+		w32.WS_CHILD|w32.WS_VISIBLE|w32.WS_GROUP|w32.BS_AUTORADIOBUTTON, 300, 278, 130, 20,
 		idThemeDark, instance, scale)
 	s.themeLight = s.add("BUTTON", "Bulle claire",
-		w32.WS_CHILD|w32.WS_VISIBLE|w32.BS_AUTORADIOBUTTON, 300, 270, 130, 20,
+		w32.WS_CHILD|w32.WS_VISIBLE|w32.BS_AUTORADIOBUTTON, 300, 300, 130, 20,
 		idThemeLight, instance, scale)
 
 	// --- atelier
-	group("Atelier", 314, 210)
-	label("Texte a chiffrer, ou message MC1~ a dechiffrer :", 28, 334, 400, 18)
-	s.workshopIn = edit(idWorkshopIn, w32.ES_MULTILINE|w32.ES_WANTRETURN|w32.WS_VSCROLL, 28, 352, 410, 60)
-	button("Chiffrer", idWorkshopEncrypt, 28, 418, 90)
-	button("Dechiffrer", idWorkshopDecrypt, 124, 418, 90)
-	button("Copier le resultat", idWorkshopCopy, 220, 418, 130)
-	s.workshopOut = edit(idWorkshopOut, w32.ES_MULTILINE|w32.ES_READONLY|w32.WS_VSCROLL, 28, 448, 410, 62)
+	group("Atelier", 344, 210)
+	label("Texte a chiffrer, ou message chiffre a relire :", 28, 364, 400, 18)
+	s.workshopIn = edit(idWorkshopIn, w32.ES_MULTILINE|w32.ES_WANTRETURN|w32.WS_VSCROLL, 28, 382, 410, 60)
+	button("Chiffrer", idWorkshopEncrypt, 28, 448, 90)
+	button("Dechiffrer", idWorkshopDecrypt, 124, 448, 90)
+	button("Copier le resultat", idWorkshopCopy, 220, 448, 130)
+	s.workshopOut = edit(idWorkshopOut, w32.ES_MULTILINE|w32.ES_READONLY|w32.WS_VSCROLL, 28, 478, 410, 62)
 
 	// --- aide et boutons finaux
-	label("Selectionnez du texte, faites le raccourci : c'est tout. L'icone pres de "+
-		"l'horloge donne acces a ces reglages.", 16, 528, 440, 32)
-	label(appName+" "+appVersion+" - AES-256-GCM, cle derivee par scrypt.", 16, 560, 440, 18)
-	button("Enregistrer", idSave, 240, 584, 105)
-	button("Fermer", idClose, 351, 584, 105)
+	label("Frappe masquee : tout ce que vous tapez s'affiche chiffre, en direct. "+
+		"Echap ou le meme raccourci pour en sortir.", 16, 558, 440, 32)
+	label(appName+" "+appVersion+" - AES-256-GCM, cle derivee par scrypt.", 16, 590, 440, 18)
+	button("Enregistrer", idSave, 240, 614, 105)
+	button("Fermer", idClose, 351, 614, 105)
 }
 
 // add cree un controle enfant et lui donne la police de l'interface.
@@ -228,6 +234,7 @@ func (s *settingsWindow) load(cfg config.Config) {
 	w32.SetWindowText(s.passphrase, cfg.Passphrase())
 	w32.SetWindowText(s.hotkeyDecrypt, hotkey.Pretty(cfg.HotkeyDecrypt))
 	w32.SetWindowText(s.hotkeyEncrypt, hotkey.Pretty(cfg.HotkeyEncrypt))
+	w32.SetWindowText(s.hotkeyMask, hotkey.Pretty(cfg.HotkeyMask))
 	w32.SetWindowText(s.seconds, strconv.Itoa(cfg.BubbleSeconds))
 	w32.SetChecked(s.autoPaste, cfg.AutoPaste)
 	w32.SetChecked(s.restore, cfg.RestoreClipboard)
@@ -263,8 +270,13 @@ func (s *settingsWindow) save() {
 		s.alert(capitalize(err.Error()), w32.MB_ICONERROR)
 		return
 	}
-	if decryptCombo == encryptCombo {
-		s.alert("Les deux raccourcis doivent etre differents.", w32.MB_ICONERROR)
+	maskCombo, err := hotkey.Normalize(w32.WindowText(s.hotkeyMask))
+	if err != nil {
+		s.alert(capitalize(err.Error()), w32.MB_ICONERROR)
+		return
+	}
+	if decryptCombo == encryptCombo || decryptCombo == maskCombo || encryptCombo == maskCombo {
+		s.alert("Les trois raccourcis doivent etre differents.", w32.MB_ICONERROR)
 		return
 	}
 	if updated.HasPassphrase() && passphrase != updated.Passphrase() {
@@ -285,6 +297,7 @@ func (s *settingsWindow) save() {
 	updated.SetPassphrase(passphrase)
 	updated.HotkeyDecrypt = decryptCombo
 	updated.HotkeyEncrypt = encryptCombo
+	updated.HotkeyMask = maskCombo
 	updated.BubbleSeconds = seconds
 	updated.AutoPaste = w32.Checked(s.autoPaste)
 	updated.RestoreClipboard = w32.Checked(s.restore)
@@ -430,6 +443,8 @@ func (s *settingsWindow) command(id uint32) {
 		s.startCapture(s.hotkeyDecrypt)
 	case idCaptureEncrypt:
 		s.startCapture(s.hotkeyEncrypt)
+	case idCaptureMask:
+		s.startCapture(s.hotkeyMask)
 	case idWorkshopEncrypt:
 		s.workshop(true)
 	case idWorkshopDecrypt:

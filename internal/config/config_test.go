@@ -21,6 +21,9 @@ func TestValeursParDefaut(t *testing.T) {
 	if config.HotkeyDecrypt != "ctrl+alt+d" || config.HotkeyEncrypt != "ctrl+alt+e" {
 		t.Fatalf("raccourcis par defaut : %+v", config)
 	}
+	if config.HotkeyMask != "ctrl+alt+m" {
+		t.Fatalf("raccourci de frappe masquee : %q", config.HotkeyMask)
+	}
 	if config.HasPassphrase() {
 		t.Fatal("aucune phrase secrete ne devrait exister au depart")
 	}
@@ -81,7 +84,7 @@ func TestReglagesInconnusIgnores(t *testing.T) {
 	if config.HotkeyEncrypt != "ctrl+f9" {
 		t.Fatalf("reglage connu perdu : %q", config.HotkeyEncrypt)
 	}
-	if config.HotkeyDecrypt != "ctrl+alt+d" {
+	if config.HotkeyDecrypt != "ctrl+alt+d" || config.HotkeyMask != "ctrl+alt+m" {
 		t.Fatal("les reglages absents devraient reprendre la valeur d'usine")
 	}
 }

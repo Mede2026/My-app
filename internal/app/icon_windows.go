@@ -7,15 +7,24 @@ import (
 	"github.com/mede2026/cryptobulle/internal/w32"
 )
 
-// L'icone est integree au binaire : aucun fichier a livrer a cote.
+// Les icones sont integrees au binaire : aucun fichier a livrer a cote.
+// La seconde, ambre, signale que la frappe masquee est active.
 //
 //go:embed assets/icon.ico
 var iconFile []byte
 
+//go:embed assets/icon-active.ico
+var iconActiveFile []byte
+
 // loadIcon extrait du fichier .ico l'image la plus proche de la taille voulue
 // et la transforme en icone utilisable par Windows.
-func loadIcon(size int32) w32.HICON {
-	image := bestImage(size)
+func loadIcon(size int32) w32.HICON { return iconFrom(iconFile, size) }
+
+// loadActiveIcon rend l'icone qui signale la frappe masquee.
+func loadActiveIcon(size int32) w32.HICON { return iconFrom(iconActiveFile, size) }
+
+func iconFrom(file []byte, size int32) w32.HICON {
+	image := bestImage(file, size)
 	if image == nil {
 		return 0
 	}
@@ -23,7 +32,7 @@ func loadIcon(size int32) w32.HICON {
 }
 
 // bestImage lit l'en-tete du fichier .ico et rend l'image la mieux adaptee.
-func bestImage(wanted int32) []byte {
+func bestImage(iconFile []byte, wanted int32) []byte {
 	const headerLen, entryLen = 6, 16
 	if len(iconFile) < headerLen {
 		return nil
