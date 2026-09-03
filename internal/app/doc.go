@@ -10,5 +10,5 @@ package app
 // Nom et version affiches dans l'interface.
 const (
 	appName    = "CryptoBulle"
-	appVersion = "2.5.0"
+	appVersion = "2.6.0"
 )

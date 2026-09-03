@@ -169,14 +169,43 @@ func TestReperageDansUneLigne(t *testing.T) {
 		t.Fatalf("ligne seule : %q, %v", relu, err)
 	}
 
-	// Deux lignes : chacune se relit toute seule, sans deborder sur l'autre.
-	deuxLignes := masquer(t, "ligne un", pass) + "\r\n" + masquer(t, "ligne deux", pass)
-	relu, err := DecryptText(deuxLignes, pass)
+	// Deux blocs tapes separement, colles l'un sous l'autre : chacun porte son
+	// propre en-tete, et la lecture repart au bon endroit.
+	deuxBlocs := masquer(t, "ligne un", pass) + "\r\n" + masquer(t, "ligne deux", pass)
+	relu, err := DecryptText(deuxBlocs, pass)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if relu != "ligne un" {
-		t.Fatalf("premiere ligne relue : %q", relu)
+	if relu != "ligne un\nligne deux" {
+		t.Fatalf("deux blocs relus : %q", relu)
+	}
+}
+
+func TestParagrapheUnSeulEnTete(t *testing.T) {
+	texte := "Salut Simon,\nvoici le mot de passe : Batterie-2022.\nA demain !"
+
+	stream, err := NewStream(pass)
+	if err != nil {
+		t.Fatal(err)
+	}
+	visible := stream.Marker()
+	for _, letter := range texte {
+		if letter == '\n' {
+			visible += "\n" // le retour a la ligne traverse tel quel
+			continue
+		}
+		visible += stream.Mask(letter)
+	}
+
+	// Un seul en-tete pour tout le paragraphe : les lignes suivantes commencent
+	// directement par le texte masque.
+	attendu := len([]rune(texte)) + StreamHeaderChars
+	if got := len([]rune(visible)); got != attendu {
+		t.Fatalf("%d caracteres affiches pour %d attendus", got, attendu)
+	}
+	relu, err := DecryptText(visible, pass)
+	if err != nil || relu != texte {
+		t.Fatalf("paragraphe relu : %q, %v", relu, err)
 	}
 }
 

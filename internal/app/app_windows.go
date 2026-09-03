@@ -62,7 +62,7 @@ func Run() error {
 	runtime.LockOSThread()
 
 	if !claimSingleInstance() {
-		w32.MessageBox(0, appName+" est deja lance (icone pres de l'horloge).",
+		w32.MessageBox(0, appName+" est déjà lancé (icône près de l'horloge).",
 			appName, w32.MB_OK|w32.MB_ICONINFORMATION)
 		return nil
 	}
@@ -92,7 +92,7 @@ func Run() error {
 	app.mask = newMaskTyping(app)
 
 	if message := app.applyHotkeys(); message != "" {
-		w32.MessageBox(0, message+"\n\nChoisissez d'autres raccourcis dans les reglages.",
+		w32.MessageBox(0, message+"\n\nChoisissez d'autres raccourcis dans les réglages.",
 			appName, w32.MB_OK|w32.MB_ICONERROR)
 	}
 
@@ -103,9 +103,9 @@ func Run() error {
 		app.openSettings()
 	} else {
 		app.bubble.show(appName+" est actif",
-			hotkey.Pretty(cfg.HotkeyEncrypt)+" : chiffrer la selection\n"+
-				hotkey.Pretty(cfg.HotkeyDecrypt)+" : dechiffrer la selection\n"+
-				hotkey.Pretty(cfg.HotkeyMask)+" : frappe masquee",
+			hotkey.Pretty(cfg.HotkeyEncrypt)+" : chiffrer la sélection\n"+
+				hotkey.Pretty(cfg.HotkeyDecrypt)+" : déchiffrer la sélection\n"+
+				hotkey.Pretty(cfg.HotkeyMask)+" : frappe masquée",
 			kindInfo, 8)
 	}
 
@@ -290,7 +290,7 @@ func (a *App) setTrayState(masking bool) {
 	tip := appName + " " + appVersion
 	if masking {
 		data.Icon = a.trayIconActive
-		tip = appName + " - frappe masquee active"
+		tip = appName + " - frappe masquée active"
 	}
 	copy(data.Tip[:], windows.StringToUTF16(tip))
 	w32.ShellNotifyIcon(w32.NIM_MODIFY, &data)
@@ -303,13 +303,13 @@ func (a *App) removeTrayIcon() {
 
 func (a *App) showTrayMenu() {
 	menu := w32.CreatePopupMenu()
-	w32.AppendMenu(menu, w32.MF_STRING, menuSettings, "Reglages...")
+	w32.AppendMenu(menu, w32.MF_STRING, menuSettings, "Réglages...")
 	w32.AppendMenu(menu, w32.MF_SEPARATOR, 0, "")
-	w32.AppendMenu(menu, w32.MF_STRING, menuEncrypt, "Chiffrer la selection")
-	w32.AppendMenu(menu, w32.MF_STRING, menuDecrypt, "Dechiffrer la selection")
-	maskLabel := "Frappe masquee : allumer"
+	w32.AppendMenu(menu, w32.MF_STRING, menuEncrypt, "Chiffrer la sélection")
+	w32.AppendMenu(menu, w32.MF_STRING, menuDecrypt, "Déchiffrer la sélection")
+	maskLabel := "Frappe masquée : allumer"
 	if a.mask.active {
-		maskLabel = "Frappe masquee : eteindre"
+		maskLabel = "Frappe masquée : éteindre"
 	}
 	w32.AppendMenu(menu, w32.MF_STRING, menuMask, maskLabel)
 	w32.AppendMenu(menu, w32.MF_SEPARATOR, 0, "")
@@ -359,7 +359,7 @@ func (a *App) applyHotkeys() string {
 			return err.Error()
 		}
 		if !w32.RegisterHotKey(a.hwnd, entry.id, parsed.Modifiers|hotkey.ModNoRepeat, parsed.Key) {
-			return "Windows refuse « " + parsed.Pretty() + " » : ce raccourci est deja pris " +
+			return "Windows refuse « " + parsed.Pretty() + " » : ce raccourci est déjà pris " +
 				"par un autre logiciel."
 		}
 	}
@@ -391,14 +391,14 @@ func (a *App) actionDecrypt() {
 
 	plaintext, err := crypto.DecryptText(text, cfg.Passphrase())
 	if err != nil {
-		title := "Dechiffrement impossible"
+		title := "Déchiffrement impossible"
 		if errors.Is(err, crypto.ErrNotFound) {
-			title = "Rien a dechiffrer"
+			title = "Rien à déchiffrer"
 		}
 		a.showBubble(title, capitalize(err.Error()), kindError, -1)
 		return
 	}
-	a.showBubble("Texte dechiffre", plaintext, kindSuccess, -1)
+	a.showBubble("Texte déchiffré", plaintext, kindSuccess, -1)
 }
 
 func (a *App) actionEncrypt() {
@@ -410,12 +410,12 @@ func (a *App) actionEncrypt() {
 	text, previous := selectedText()
 	text = strings.TrimSpace(text)
 	if text == "" {
-		a.showBubble("Rien a chiffrer",
-			"Selectionnez d'abord du texte, puis refaites le raccourci.", kindError, -1)
+		a.showBubble("Rien à chiffrer",
+			"Sélectionnez d'abord du texte, puis refaites le raccourci.", kindError, -1)
 		return
 	}
 	if crypto.LooksEncrypted(text) {
-		a.showBubble("Deja chiffre", "Ce texte est deja un message CryptoBulle.", kindError, -1)
+		a.showBubble("Déjà chiffré", "Ce texte est déjà un message CryptoBulle.", kindError, -1)
 		return
 	}
 
@@ -444,8 +444,8 @@ func (a *App) requirePassphrase(cfg config.Config) bool {
 	if cfg.HasPassphrase() {
 		return true
 	}
-	a.showBubble("Phrase secrete manquante",
-		"Ouvrez les reglages pour choisir votre phrase secrete.", kindError, -1)
+	a.showBubble("Phrase secrète manquante",
+		"Ouvrez les réglages pour choisir votre phrase secrète.", kindError, -1)
 	a.post(a.openSettings)
 	return false
 }

@@ -97,8 +97,8 @@ c'est le même raccourci que pour les messages ordinaires.
   le seul indicateur, il n'y a pas de fenêtre qui s'ouvre : elle volerait le
   curseur au logiciel dans lequel vous écrivez.
 - Le **retour arrière** efface le caractère et libère sa place, comme d'habitude.
-- La touche **Entrée** commence une nouvelle ligne, avec son propre en-tête
-  invisible : chaque ligne se relit indépendamment.
+- La touche **Entrée** passe telle quelle : un paragraphe entier reste un seul
+  texte masqué. Sélectionnez-le en entier, depuis son début, pour le relire.
 - Les **emojis** et les caractères rares sont chiffrés eux aussi. Rien ne sort
   jamais en clair.
 - La ligne ne porte **aucun marqueur** : c'est du charabia du premier au dernier
@@ -206,12 +206,15 @@ regardant votre écran. Le texte n'utilise que des caractères ordinaires du
 clavier, sans accent ni symbole exotique : ça ressemble à `fPyC@.WE^E`, pas à du
 texte abîmé.
 
-Cinq caractères de plus s'ajoutent en début de ligne : quatre pour le tirage
-aléatoire de la session, un pour le contrôle. Ils ne se voient pas, ils se lisent
-comme le reste. Ils coûtent peu et ils évitent le pire défaut possible : sans
-tirage, deux fois la même phrase donnerait exactement le même affichage, et
-quelqu'un qui récolterait une vingtaine de vos lignes pourrait les casser sans
-connaître votre phrase secrète.
+Six caractères de plus s'ajoutent **une seule fois**, au tout début de la frappe :
+quatre pour le tirage aléatoire de la session, deux pour le contrôle. Vous pouvez
+écrire un paragraphe entier, avec des retours à la ligne, sans que rien ne se
+répète. Ils ne se voient pas, ils se lisent comme le reste.
+
+Ces six caractères évitent le pire défaut possible : sans tirage aléatoire, deux
+fois la même phrase donnerait exactement le même affichage, et quelqu'un qui
+récolterait une vingtaine de vos lignes pourrait les casser sans connaître votre
+phrase secrète.
 
 Sans marqueur, comment l'application s'y retrouve ? Elle **essaie** de relire la
 ligne. Les deux caractères de contrôle, calculés à partir de votre clé, lui disent

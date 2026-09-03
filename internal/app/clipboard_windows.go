@@ -14,7 +14,7 @@ import (
 // compteur que Windows incremente a chaque modification. La reaction est donc
 // immediate, sans attendre un delai fixe.
 
-var errClipboardBusy = errors.New("presse-papiers occupe par un autre logiciel")
+var errClipboardBusy = errors.New("presse-papiers occupé par un autre logiciel")
 
 // openClipboard reessaie brievement : un autre programme peut le tenir.
 func openClipboard() bool {
@@ -42,7 +42,7 @@ func setClipboardText(text string) error {
 	defer w32.CloseClipboard()
 	w32.EmptyClipboard()
 	if !w32.SetClipboardText(text) {
-		return errors.New("Windows a refuse l'ecriture du presse-papiers")
+		return errors.New("Windows a refusé l'écriture du presse-papiers")
 	}
 	return nil
 }

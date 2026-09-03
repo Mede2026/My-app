@@ -69,12 +69,12 @@ var (
 
 // Erreurs presentees telles quelles a l'utilisateur.
 var (
-	ErrNoPassphrase = errors.New("aucune phrase secrete n'est configuree")
-	ErrEmpty        = errors.New("il n'y a rien a chiffrer")
+	ErrNoPassphrase = errors.New("aucune phrase secrète n'est configurée")
+	ErrEmpty        = errors.New("il n'y a rien à chiffrer")
 	ErrNotAToken    = errors.New("ce texte ne contient pas de message CryptoBulle")
-	ErrNotFound     = errors.New("aucun message CryptoBulle dans la selection")
-	ErrDamaged      = errors.New("message CryptoBulle incomplet ou abime")
-	ErrWrongKey     = errors.New("dechiffrement impossible : phrase secrete differente ou message modifie")
+	ErrNotFound     = errors.New("aucun message CryptoBulle dans la sélection")
+	ErrDamaged      = errors.New("message CryptoBulle incomplet ou abîmé")
+	ErrWrongKey     = errors.New("déchiffrement impossible : phrase secrète différente ou message modifié")
 )
 
 // --- cache de cles ----------------------------------------------------------
@@ -103,7 +103,7 @@ func DeriveKey(passphrase string, salt []byte) ([]byte, error) {
 	material = append(material, appPepper...)
 	key, err := scrypt.Key(material, salt, scryptN, scryptR, scryptP, keyLen)
 	if err != nil {
-		return nil, fmt.Errorf("derivation de la cle : %w", err)
+		return nil, fmt.Errorf("dérivation de la clé : %w", err)
 	}
 
 	keyCache.Lock()
@@ -119,7 +119,7 @@ func DeriveKey(passphrase string, salt []byte) ([]byte, error) {
 func NewSalt() []byte {
 	salt := make([]byte, SaltLen)
 	if _, err := rand.Read(salt); err != nil {
-		panic("source d'alea indisponible : " + err.Error())
+		panic("source d'aléa indisponible : " + err.Error())
 	}
 	return salt
 }
@@ -145,7 +145,7 @@ func Encrypt(plaintext, passphrase string, salt []byte) (string, error) {
 
 	nonce := make([]byte, nonceLen)
 	if _, err := rand.Read(nonce); err != nil {
-		return "", fmt.Errorf("source d'alea indisponible : %w", err)
+		return "", fmt.Errorf("source d'aléa indisponible : %w", err)
 	}
 
 	header := make([]byte, 0, headerLen)
@@ -198,7 +198,7 @@ func decryptBlock(token, passphrase string) (string, error) {
 // texte dechiffre plutot qu'un octet de l'entete.
 func openBlock(raw []byte, passphrase string, saltAt, headerEnd int, versionInside bool) (string, error) {
 	if !versionInside && raw[len(magic)] != version {
-		return "", fmt.Errorf("message cree avec une version plus recente (v%d)", raw[len(magic)])
+		return "", fmt.Errorf("message créé avec une version plus récente (v%d)", raw[len(magic)])
 	}
 	salt := raw[saltAt : saltAt+SaltLen]
 	nonce := raw[saltAt+SaltLen : headerEnd]

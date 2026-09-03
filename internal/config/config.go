@@ -31,7 +31,7 @@ type Config struct {
 	PassphraseSealed string `json:"passphrase_sealed"`
 	// Duree d'affichage de la bulle, en secondes (0 = fermeture manuelle).
 	BubbleSeconds int `json:"bubble_seconds"`
-	// Coller automatiquement le texte chiffre a la place de la selection.
+	// Coller automatiquement le texte chiffré a la place de la selection.
 	AutoPaste bool `json:"auto_paste"`
 	// Remettre l'ancien contenu du presse-papiers apres coup.
 	RestoreClipboard bool   `json:"restore_clipboard"`

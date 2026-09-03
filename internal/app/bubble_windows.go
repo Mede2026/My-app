@@ -184,7 +184,7 @@ func (b *bubbleWindow) show(title, text, kind string, seconds int) {
 	if b.accent == 0 {
 		b.accent = accents[kindInfo]
 	}
-	b.hint = "Echap pour fermer"
+	b.hint = "Échap pour fermer"
 	b.hovered = hoverNone
 	b.mouseInside = false
 
@@ -212,7 +212,7 @@ func (b *bubbleWindow) layout() {
 	bodyHeight := b.measureBody(inner)
 	if maximum := b.scale(bodyMaxHeight); bodyHeight > maximum {
 		bodyHeight = maximum
-		b.hint = "Molette pour faire defiler"
+		b.hint = "Molette pour faire défiler"
 	}
 	if minimum := b.scale(bodyMinHeight); bodyHeight < minimum {
 		bodyHeight = minimum
@@ -407,7 +407,7 @@ func bubbleWndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			b.hide()
 		case hoverCopy:
 			if err := setClipboardText(b.text); err == nil {
-				b.hint = "Copie dans le presse-papiers"
+				b.hint = "Copié dans le presse-papiers"
 				w32.InvalidateRect(b.hwnd, false)
 			}
 		}

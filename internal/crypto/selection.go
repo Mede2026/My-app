@@ -81,19 +81,44 @@ func DecryptText(selection, passphrase string) (string, error) {
 		}
 	}
 
-	// Frappe masquee : chaque ligne se relit toute seule.
-	for _, line := range strings.Split(selection, "\n") {
-		line = stripLegacyPrefixes(strings.TrimRight(line, "\r"))
-		for _, candidate := range firstFew(longestFirst(streamRunRe.FindAllString(line, -1))) {
-			if plain, err := decryptStream(candidate, passphrase); err == nil {
-				return plain, nil
-			}
+	// Frappe masquee : le texte se lit d'un bloc, retours a la ligne compris.
+	// L'en-tete n'apparait qu'au debut, donc on essaie chaque endroit ou une
+	// suite de caracteres masques commence.
+	masked := stripLegacyPrefixes(selection)
+	for _, start := range streamStarts(masked) {
+		if plain, err := decryptStream(masked[start:], passphrase); err == nil {
+			return plain, nil
 		}
 	}
 	if recognized {
 		return "", ErrWrongKey
 	}
 	return "", ErrNotFound
+}
+
+// streamStarts rend les positions ou une suite de caracteres masques commence.
+// Ce sont les seuls endroits ou l'en-tete peut se trouver.
+func streamStarts(text string) []int {
+	var starts []int
+	previousWasMasked := false
+	for position, letter := range text {
+		_, masked := outputIndex[letter]
+		if masked && !previousWasMasked {
+			starts = append(starts, position)
+		}
+		previousWasMasked = masked
+	}
+	return firstFewPositions(starts)
+}
+
+// firstFewPositions borne le travail : au-dela, ce n'est plus une selection
+// mais un document entier.
+func firstFewPositions(starts []int) []int {
+	const maximum = 8
+	if len(starts) > maximum {
+		return starts[:maximum]
+	}
+	return starts
 }
 
 // stripLegacyPrefixes retire les marqueurs, pour que la recherche « a

@@ -49,15 +49,15 @@ func (m *maskTyping) toggle() {
 func (m *maskTyping) start() {
 	cfg := m.app.config()
 	if !cfg.HasPassphrase() {
-		m.app.showBubble("Phrase secrete manquante",
-			"Ouvrez les reglages pour choisir votre phrase secrete.", kindError, -1)
+		m.app.showBubble("Phrase secrète manquante",
+			"Ouvrez les réglages pour choisir votre phrase secrète.", kindError, -1)
 		m.app.post(m.app.openSettings)
 		return
 	}
 
 	stream, err := crypto.NewStream(cfg.Passphrase())
 	if err != nil {
-		m.app.showBubble("Frappe masquee impossible", capitalize(err.Error()), kindError, -1)
+		m.app.showBubble("Frappe masquée impossible", capitalize(err.Error()), kindError, -1)
 		return
 	}
 
@@ -67,8 +67,8 @@ func (m *maskTyping) start() {
 
 	hook := w32.SetKeyboardHook(maskProc)
 	if hook == 0 {
-		m.app.showBubble("Frappe masquee impossible",
-			"Windows a refuse l'interception du clavier.", kindError, -1)
+		m.app.showBubble("Frappe masquée impossible",
+			"Windows a refusé l'interception du clavier.", kindError, -1)
 		return
 	}
 	m.hook, m.stream, m.active = hook, stream, true
@@ -85,20 +85,6 @@ func (m *maskTyping) stop() {
 	m.hook, m.stream, m.active = 0, nil, false
 	clear(m.swallowed)
 	m.app.setTrayState(false)
-}
-
-// newLine termine la ligne courante et en commence une nouvelle, avec son
-// propre marqueur : chaque ligne se relit ainsi toute seule.
-func (m *maskTyping) newLine() {
-	w32.SendKey(w32.VK_RETURN)
-	cfg := m.app.config()
-	stream, err := crypto.NewStream(cfg.Passphrase())
-	if err != nil {
-		m.stop()
-		return
-	}
-	m.stream = stream
-	w32.SendString(stream.Marker())
 }
 
 // maskHookProc recoit chaque touche avant l'application au premier plan.
@@ -145,9 +131,9 @@ func maskHookProc(code int, wparam, lparam uintptr) uintptr {
 			m.stream.Rewind() // le caractere efface libere sa place
 			return passThrough(app, code, wparam, lparam)
 		case w32.VK_RETURN:
-			m.newLine()
-			m.swallowed[event.VkCode] = true
-			return 1
+			// Le retour a la ligne traverse tel quel et ne coupe pas le texte :
+			// l'en-tete n'est ecrit qu'une fois, au debut de la frappe.
+			return passThrough(app, code, wparam, lparam)
 		}
 
 		letter, ok := m.letterFor(event)

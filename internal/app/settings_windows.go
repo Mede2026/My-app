@@ -107,7 +107,7 @@ func newSettingsWindow(app *App) *settingsWindow {
 
 	settings := &settingsWindow{app: app}
 	settings.hwnd = w32.CreateWindowEx(
-		0, settingsClass, appName+" - reglages", style, 0, 0, 100, 100, 0, 0, instance,
+		0, settingsClass, appName+" - réglages", style, 0, 0, 100, 100, 0, 0, instance,
 	)
 	// La densite depend de l'ecran ou la fenetre est apparue : on la lit apres
 	// la creation, puis on donne a la fenetre sa vraie taille.
@@ -170,31 +170,31 @@ func (s *settingsWindow) build(instance windows.Handle, scale func(int32) int32)
 	}
 
 	// --- phrase secrete
-	group("Phrase secrete", 8, 92)
+	group("Phrase secrète", 8, 92)
 	s.passphrase = edit(idPassphrase, w32.ES_AUTOHSCROLL|w32.ES_PASSWORD, 28, 30, 300, 22)
 	s.showPassphrase = check("Afficher", idShowPassphrase, 340, 31, 100)
 	s.storageNote = label("", 28, 58, 410, 16)
-	label("Vos correspondants doivent avoir exactement la meme phrase.", 28, 74, 410, 16)
+	label("Vos correspondants doivent avoir exactement la même phrase.", 28, 74, 410, 16)
 
 	// --- raccourcis
 	group("Raccourcis clavier", 108, 114)
-	label("Dechiffrer la selection", 28, 134, 160, 20)
+	label("Déchiffrer la sélection", 28, 134, 160, 20)
 	s.hotkeyDecrypt = edit(idHotkeyDecrypt, w32.ES_READONLY|w32.ES_AUTOHSCROLL, 190, 132, 130, 22)
 	button("Enregistrer...", idCaptureDecrypt, 330, 131, 110)
-	label("Chiffrer la selection", 28, 164, 160, 20)
+	label("Chiffrer la sélection", 28, 164, 160, 20)
 	s.hotkeyEncrypt = edit(idHotkeyEncrypt, w32.ES_READONLY|w32.ES_AUTOHSCROLL, 190, 162, 130, 22)
 	button("Enregistrer...", idCaptureEncrypt, 330, 161, 110)
-	label("Frappe masquee", 28, 194, 160, 20)
+	label("Frappe masquée", 28, 194, 160, 20)
 	s.hotkeyMask = edit(idHotkeyMask, w32.ES_READONLY|w32.ES_AUTOHSCROLL, 190, 192, 130, 22)
 	button("Enregistrer...", idCaptureMask, 330, 191, 110)
 
 	// --- comportement
 	group("Comportement", 230, 106)
-	label("Duree de la bulle (secondes, 0 = manuel)", 28, 254, 250, 20)
+	label("Durée de la bulle (secondes, 0 = manuel)", 28, 254, 250, 20)
 	s.seconds = edit(idSeconds, w32.ES_AUTOHSCROLL, 284, 252, 50, 22)
-	s.autoPaste = check("Coller automatiquement le texte chiffre", idAutoPaste, 28, 278, 260)
+	s.autoPaste = check("Coller automatiquement le texte chiffré", idAutoPaste, 28, 278, 260)
 	s.restore = check("Remettre l'ancien presse-papiers ensuite", idRestore, 28, 300, 260)
-	s.startup = check("Lancer au demarrage de Windows", idStartup, 28, 322, 260)
+	s.startup = check("Lancer au démarrage de Windows", idStartup, 28, 322, 260)
 	s.themeDark = s.add("BUTTON", "Bulle sombre",
 		w32.WS_CHILD|w32.WS_VISIBLE|w32.WS_GROUP|w32.BS_AUTORADIOBUTTON, 300, 278, 130, 20,
 		idThemeDark, instance, scale)
@@ -204,17 +204,17 @@ func (s *settingsWindow) build(instance windows.Handle, scale func(int32) int32)
 
 	// --- atelier
 	group("Atelier", 344, 210)
-	label("Texte a chiffrer, ou message chiffre a relire :", 28, 364, 400, 18)
+	label("Texte à chiffrer, ou message chiffré à relire :", 28, 364, 400, 18)
 	s.workshopIn = edit(idWorkshopIn, w32.ES_MULTILINE|w32.ES_WANTRETURN|w32.WS_VSCROLL, 28, 382, 410, 60)
 	button("Chiffrer", idWorkshopEncrypt, 28, 448, 90)
-	button("Dechiffrer", idWorkshopDecrypt, 124, 448, 90)
-	button("Copier le resultat", idWorkshopCopy, 220, 448, 130)
+	button("Déchiffrer", idWorkshopDecrypt, 124, 448, 90)
+	button("Copier le résultat", idWorkshopCopy, 220, 448, 130)
 	s.workshopOut = edit(idWorkshopOut, w32.ES_MULTILINE|w32.ES_READONLY|w32.WS_VSCROLL, 28, 478, 410, 62)
 
 	// --- aide et boutons finaux
-	label("Frappe masquee : tout ce que vous tapez s'affiche chiffre, en direct. "+
-		"Echap ou le meme raccourci pour en sortir.", 16, 558, 440, 32)
-	label(appName+" "+appVersion+" - AES-256-GCM, cle derivee par scrypt.", 16, 590, 440, 18)
+	label("Frappe masquée : tout ce que vous tapez s'affiche chiffré, en direct. "+
+		"Échap ou le même raccourci pour en sortir.", 16, 558, 440, 32)
+	label(appName+" "+appVersion+" - AES-256-GCM, clé dérivée par scrypt.", 16, 590, 440, 18)
 	button("Enregistrer", idSave, 240, 614, 105)
 	button("Fermer", idClose, 351, 614, 105)
 }
@@ -244,9 +244,9 @@ func (s *settingsWindow) load(cfg config.Config) {
 	w32.SetChecked(s.showPassphrase, false)
 	w32.SendMessage(s.passphrase, w32.EM_SETPASSWORDCHAR, uintptr('•'), 0)
 
-	note := "Attention : sans protection systeme, la phrase est simplement encodee."
+	note := "Attention : sans protection du système, la phrase est simplement encodée."
 	if config.SecureStorage() {
-		note = "Phrase secrete protegee par Windows (DPAPI)."
+		note = "Phrase secrète protégée par Windows (DPAPI)."
 	}
 	w32.SetWindowText(s.storageNote, note)
 }
@@ -257,7 +257,7 @@ func (s *settingsWindow) save() {
 
 	passphrase := w32.WindowText(s.passphrase)
 	if passphrase == "" {
-		s.alert("La phrase secrete est obligatoire.", w32.MB_ICONERROR)
+		s.alert("La phrase secrète est obligatoire.", w32.MB_ICONERROR)
 		return
 	}
 	decryptCombo, err := hotkey.Normalize(w32.WindowText(s.hotkeyDecrypt))
@@ -276,12 +276,12 @@ func (s *settingsWindow) save() {
 		return
 	}
 	if decryptCombo == encryptCombo || decryptCombo == maskCombo || encryptCombo == maskCombo {
-		s.alert("Les trois raccourcis doivent etre differents.", w32.MB_ICONERROR)
+		s.alert("Les trois raccourcis doivent être différents.", w32.MB_ICONERROR)
 		return
 	}
 	if updated.HasPassphrase() && passphrase != updated.Passphrase() {
 		answer := w32.MessageBox(s.hwnd,
-			"Changer la phrase secrete rendra illisibles les messages deja chiffres "+
+			"Changer la phrase secrète rendra illisibles les messages déjà chiffrés "+
 				"avec l'ancienne.\n\nContinuer ?", appName, w32.MB_YESNO|w32.MB_ICONERROR)
 		if answer != w32.IDYES {
 			return
@@ -290,7 +290,7 @@ func (s *settingsWindow) save() {
 
 	seconds, err := strconv.Atoi(strings.TrimSpace(w32.WindowText(s.seconds)))
 	if err != nil || seconds < 0 {
-		s.alert("La duree doit etre un nombre de secondes (0 ou plus).", w32.MB_ICONERROR)
+		s.alert("La durée doit être un nombre de secondes (0 ou plus).", w32.MB_ICONERROR)
 		return
 	}
 
@@ -318,7 +318,7 @@ func (s *settingsWindow) save() {
 		return
 	}
 	go warmUp(updated.Passphrase(), updated.Salt())
-	s.alert("Reglages enregistres.", w32.MB_ICONINFORMATION)
+	s.alert("Réglages enregistrés.", w32.MB_ICONINFORMATION)
 }
 
 func (s *settingsWindow) alert(message string, icon uint32) {
