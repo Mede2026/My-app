@@ -44,9 +44,17 @@ const (
 	idWorkshopEncrypt
 	idWorkshopDecrypt
 	idWorkshopCopy
+	idSelfTest
 	idSave
 	idClose
 )
+
+// Phrase du test automatique : uniquement des minuscules et des chiffres, pour
+// ne dependre d'aucune disposition clavier particuliere.
+const selfTestPhrase = "bonjour ca va 123"
+
+// timerSelfTest attend que Windows ait fini de distribuer les touches simulees.
+const timerSelfTest = 1
 
 var settingsProc = windows.NewCallback(settingsWndProc)
 
@@ -208,7 +216,8 @@ func (s *settingsWindow) build(instance windows.Handle, scale func(int32) int32)
 	s.workshopIn = edit(idWorkshopIn, w32.ES_MULTILINE|w32.ES_WANTRETURN|w32.WS_VSCROLL, 28, 382, 410, 60)
 	button("Chiffrer", idWorkshopEncrypt, 28, 448, 90)
 	button("Déchiffrer", idWorkshopDecrypt, 124, 448, 90)
-	button("Copier le résultat", idWorkshopCopy, 220, 448, 130)
+	button("Copier", idWorkshopCopy, 220, 448, 70)
+	button("Tester la frappe masquée", idSelfTest, 296, 448, 142)
 	s.workshopOut = edit(idWorkshopOut, w32.ES_MULTILINE|w32.ES_READONLY|w32.WS_VSCROLL, 28, 478, 410, 62)
 
 	// --- aide et boutons finaux
@@ -321,6 +330,106 @@ func (s *settingsWindow) save() {
 	s.alert("Réglages enregistrés.", w32.MB_ICONINFORMATION)
 }
 
+// startSelfTest verifie la frappe masquee de bout en bout : chiffrement,
+// interception du clavier, injection des caracteres, puis relecture.
+//
+// Les touches sont simulees sans notre signature : le hook les traite donc
+// comme de vraies frappes.
+func (s *settingsWindow) startSelfTest() {
+	passphrase := w32.WindowText(s.passphrase)
+	if passphrase == "" {
+		s.report("La phrase secrète est obligatoire pour lancer le test.")
+		return
+	}
+
+	// 1. Le chiffrement lui-même, sans rien demander à Windows.
+	stream, err := crypto.NewStream(passphrase)
+	if err != nil {
+		s.report("Chiffrement interne : ÉCHEC (" + err.Error() + ")")
+		return
+	}
+	attendu := stream.Marker()
+	for _, letter := range selfTestPhrase {
+		attendu += stream.Mask(letter)
+	}
+	relu, err := crypto.DecryptText(attendu, passphrase)
+	if err != nil || relu != selfTestPhrase {
+		s.report("Chiffrement interne : ÉCHEC\r\nrelu : " + relu + "\r\n" + errorText(err))
+		return
+	}
+
+	// 2. L'interception du clavier, dans le champ de l'atelier.
+	w32.SetWindowText(s.workshopIn, "")
+	w32.SetWindowText(s.workshopOut, "Test en cours...")
+	w32.SetFocus(s.workshopIn)
+
+	s.app.mask.startWith(passphrase)
+	if !s.app.mask.active {
+		s.report("Chiffrement interne : OK\r\n" +
+			"Interception du clavier : ÉCHEC, Windows a refusé le hook.")
+		return
+	}
+	w32.SendUserKeys(selfTestPhrase)
+	w32.SetTimer(s.hwnd, timerSelfTest, 600)
+}
+
+// finishSelfTest lit ce qui est arrivé dans le champ et rend son verdict.
+func (s *settingsWindow) finishSelfTest() {
+	w32.KillTimer(s.hwnd, timerSelfTest)
+	s.app.mask.stop()
+
+	recu := w32.WindowText(s.workshopIn)
+	passphrase := w32.WindowText(s.passphrase)
+	relu, err := crypto.DecryptText(recu, passphrase)
+
+	lignes := []string{
+		"Chiffrement interne : OK",
+		"Interception du clavier : OK",
+		"Disposition clavier : " + w32.KeyboardLayoutName(),
+		"Tapé      : " + selfTestPhrase,
+		"Affiché   : " + recu,
+		"Attendu   : " + strconv.Itoa(len([]rune(selfTestPhrase))+crypto.StreamHeaderChars) +
+			" caractères, reçu " + strconv.Itoa(len([]rune(recu))),
+	}
+	switch {
+	case relu == selfTestPhrase:
+		lignes = append(lignes, "Relecture : OK", "", "Tout fonctionne.")
+	case recu == "":
+		lignes = append(lignes,
+			"Relecture : ÉCHEC",
+			"",
+			"Rien n'est arrivé dans le champ. Les touches ont été avalées mais",
+			"jamais réinjectées, ou une autre application les a interceptées avant.")
+	case recu == selfTestPhrase:
+		lignes = append(lignes,
+			"Relecture : ÉCHEC",
+			"",
+			"Le texte est passé en clair : le hook n'a pas avalé les touches.",
+			"Un antivirus ou une application privilégiée peut le bloquer.")
+	default:
+		lignes = append(lignes,
+			"Relecture : ÉCHEC ("+errorText(err)+")",
+			"Relu      : "+relu,
+			"",
+			"Les caractères sont arrivés, mais pas dans le bon ordre ou pas tous.",
+			"Copiez ce rapport pour le transmettre.")
+	}
+	s.report(strings.Join(lignes, "\r\n"))
+	w32.SetFocus(s.hwnd)
+}
+
+// report affiche le rapport de test dans le champ de résultat.
+func (s *settingsWindow) report(text string) {
+	w32.SetWindowText(s.workshopOut, text)
+}
+
+func errorText(err error) string {
+	if err == nil {
+		return "aucune erreur signalée"
+	}
+	return err.Error()
+}
+
 func (s *settingsWindow) alert(message string, icon uint32) {
 	w32.MessageBox(s.hwnd, message, appName, w32.MB_OK|icon)
 }
@@ -409,6 +518,12 @@ func settingsWndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		}
 		return 0
 
+	case w32.WM_TIMER:
+		if wparam == timerSelfTest {
+			s.finishSelfTest()
+		}
+		return 0
+
 	case w32.WM_DPICHANGED:
 		s.dpi = int32(wparam & 0xFFFF)
 		suggested := w32.RectAt(lparam)
@@ -444,6 +559,8 @@ func (s *settingsWindow) command(id uint32) {
 		s.workshop(true)
 	case idWorkshopDecrypt:
 		s.workshop(false)
+	case idSelfTest:
+		s.startSelfTest()
 	case idWorkshopCopy:
 		_ = setClipboardText(strings.TrimSpace(w32.WindowText(s.workshopOut)))
 	case idSave:

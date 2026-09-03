@@ -107,6 +107,21 @@ c'est le même raccourci que pour les messages ordinaires.
 - Les raccourcis du système continuent de fonctionner : `Ctrl+S`, `Alt+Tab` et
   compagnie passent sans être touchés. `AltGr` reste une touche d'écriture.
 
+### Le bouton de test
+
+Les réglages contiennent un bouton **Tester la frappe masquée**. Il vérifie la
+chaîne complète tout seul, sans que vous ayez à taper quoi que ce soit :
+
+1. le chiffrement lui-même, sans rien demander à Windows ;
+2. l'installation de l'interception clavier ;
+3. la frappe réelle, simulée dans le champ de l'atelier ;
+4. la relecture du résultat.
+
+Le rapport dit exactement où ça casse : rien n'est arrivé, le texte est passé en
+clair, les caractères sont arrivés dans le désordre. Il affiche aussi votre
+disposition clavier et le nombre de caractères attendu contre reçu. Le bouton
+**Copier** met ce rapport dans le presse-papiers.
+
 ### Ce que ce mode ne fait pas
 
 - Il **ne fonctionne pas** dans une fenêtre lancée en administrateur, ni dans

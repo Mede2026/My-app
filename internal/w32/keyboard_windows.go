@@ -1,6 +1,9 @@
 package w32
 
-import "unsafe"
+import (
+	"fmt"
+	"unsafe"
+)
 
 // Interception du clavier pour la frappe masquee.
 //
@@ -57,6 +60,7 @@ var (
 	procGetForegroundWindow      = user32.NewProc("GetForegroundWindow")
 	procGetWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
 	procGetKeyState              = user32.NewProc("GetKeyState")
+	procVkKeyScan                = user32.NewProc("VkKeyScanW")
 )
 
 // SetKeyboardHook installe le hook clavier. Rend 0 en cas d'echec.
@@ -183,4 +187,47 @@ func SendKey(virtualKey uint32) {
 	up := down
 	up.Ki.Flags = KEYEVENTF_KEYUP
 	SendInputs([]INPUT{down, up})
+}
+
+// SendUserKeys simule une frappe ordinaire, comme si elle venait du clavier.
+//
+// Contrairement a SendRune et SendString, ces evenements ne portent pas notre
+// signature : le hook les traite donc comme de vraies touches. C'est ce qui
+// permet a l'application de se tester elle-meme.
+func SendUserKeys(text string) {
+	var inputs []INPUT
+	press := func(virtualKey uint32, released bool) INPUT {
+		event := INPUT{Type: INPUT_KEYBOARD}
+		event.Ki.Vk = uint16(virtualKey)
+		event.Ki.Scan = MapVirtualKey(virtualKey)
+		if released {
+			event.Ki.Flags = KEYEVENTF_KEYUP
+		}
+		return event
+	}
+
+	for _, letter := range text {
+		scan, _, _ := procVkKeyScan.Call(uintptr(uint16(letter)))
+		if int16(scan) == -1 {
+			continue // ce caractere n'existe pas sur la disposition courante
+		}
+		virtualKey := uint32(scan & 0xFF)
+		withShift := scan&0x100 != 0
+
+		if withShift {
+			inputs = append(inputs, press(VK_SHIFT, false))
+		}
+		inputs = append(inputs, press(virtualKey, false), press(virtualKey, true))
+		if withShift {
+			inputs = append(inputs, press(VK_SHIFT, true))
+		}
+	}
+	SendInputs(inputs)
+}
+
+// KeyboardLayoutName rend l'identifiant de la disposition clavier active, utile
+// pour comprendre un probleme de saisie.
+func KeyboardLayoutName() string {
+	layout := foregroundLayout()
+	return fmt.Sprintf("0x%08X", uint32(layout))
 }

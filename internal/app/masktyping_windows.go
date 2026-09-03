@@ -54,8 +54,13 @@ func (m *maskTyping) start() {
 		m.app.post(m.app.openSettings)
 		return
 	}
+	m.startWith(cfg.Passphrase())
+}
 
-	stream, err := crypto.NewStream(cfg.Passphrase())
+// startWith allume le mode avec une phrase secrete donnee. Le test automatique
+// des reglages passe par ici.
+func (m *maskTyping) startWith(passphrase string) {
+	stream, err := crypto.NewStream(passphrase)
 	if err != nil {
 		m.app.showBubble("Frappe masquée impossible", capitalize(err.Error()), kindError, -1)
 		return
