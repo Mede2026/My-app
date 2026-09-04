@@ -69,8 +69,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Les empreintes permettent de vérifier que le fichier téléchargé est
+          # bien celui compilé ici, et servent à signaler un faux positif à
+          # Microsoft.
+          {
+            echo "### Empreintes SHA-256"
+            echo
+            echo '```'
+            (cd dist && sha256sum CryptoBulle.exe CryptoBulle-arm64.exe)
+            echo '```'
+            echo
+            echo "Windows Defender peut bloquer ces fichiers : ils ne sont pas"
+            echo "signés, et l'application intercepte le clavier pour la frappe"
+            echo "masquée. Voir la section « Windows Defender » du README."
+          } > notes.md
+
           gh release create "v${{ steps.version.outputs.version }}" \
             dist/CryptoBulle.exe dist/CryptoBulle-arm64.exe \
             --target "$GITHUB_SHA" \
             --title "CryptoBulle ${{ steps.version.outputs.version }}" \
+            --notes-file notes.md \
             --generate-notes

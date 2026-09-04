@@ -36,6 +36,39 @@ la fenêtre de réglages demande votre **phrase secrète**.
 Prenez `CryptoBulle.exe` sur un PC ordinaire, `CryptoBulle-arm64.exe` sur un PC à
 processeur ARM comme un Surface Pro X.
 
+## Windows Defender bloque le fichier
+
+C'est attendu, et ce n'est pas un virus. Trois raisons se cumulent :
+
+1. L'exécutable n'est **pas signé**. Une signature demande un certificat payant,
+   renouvelé chaque année.
+2. L'application **intercepte le clavier** pour la frappe masquée. C'est
+   exactement ce que fait un enregistreur de frappe, et l'antivirus ne peut pas
+   deviner l'intention.
+3. Les programmes écrits en **Go** déclenchent souvent ces alertes, faute de
+   réputation : chaque nouvelle version est un fichier inconnu de plus.
+
+Rien n'est enregistré ni envoyé nulle part. Le code est entier dans ce dépôt, et
+chaque exécutable est compilé par l'action GitHub, pas sur une machine
+personnelle. L'empreinte SHA-256 publiée avec chaque version permet de vérifier
+que le fichier téléchargé est bien celui-là.
+
+Trois façons de s'en sortir, de la plus simple à la plus propre :
+
+- **Autoriser le fichier.** Sécurité Windows, *Protection contre les virus et
+  menaces*, *Historique de protection*, puis *Autoriser sur l'appareil*. Il faut
+  ensuite retélécharger le fichier.
+- **Exclure le dossier** où vous rangez CryptoBulle : Sécurité Windows,
+  *Paramètres de protection*, *Exclusions*. C'est aussi ce qui permet à la mise à
+  jour automatique de fonctionner.
+- **Signaler le faux positif à Microsoft**, sur
+  [leur formulaire](https://www.microsoft.com/en-us/wdsi/filesubmission). C'est
+  gratuit, la réponse arrive en un ou deux jours, et cela règle le problème pour
+  tout le monde. L'empreinte publiée avec la version leur sert de référence.
+
+Si l'alerte reste gênante, la frappe masquée peut être retirée d'une version
+séparée : c'est elle qui déclenche l'essentiel de la suspicion.
+
 ## Mises à jour
 
 L'application se met à jour toute seule. Au démarrage, elle demande à GitHub s'il
