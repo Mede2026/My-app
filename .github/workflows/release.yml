@@ -1,17 +1,15 @@
 name: Publier une version
 
 # Une publication est créée automatiquement dès que le numéro de version change
-# dans le code (internal/app/doc.go). Une seule publication par version : si
-# elle existe déjà, le travail s'arrête sans rien faire.
+# dans le code (internal/app/doc.go). Le travail tourne à chaque envoi, mais
+# s'arrête aussitôt si cette version est déjà publiée : une version, une
+# publication, jamais de doublon.
 #
 # Le numéro est inscrit dans l'exécutable à la compilation, il correspond donc
 # toujours à celui de la publication, et la mise à jour automatique s'y fie.
 on:
   push:
     branches: ["**"]
-    paths:
-      - "internal/app/doc.go"
-      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 permissions:
