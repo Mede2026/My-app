@@ -36,6 +36,10 @@ la fenêtre de réglages demande votre **phrase secrète**.
 Prenez `CryptoBulle.exe` sur un PC ordinaire, `CryptoBulle-arm64.exe` sur un PC à
 processeur ARM comme un Surface Pro X.
 
+L'application se met à jour toute seule ensuite (voir plus bas). Pensez à
+l'ajouter aux exclusions de Windows Defender, sinon l'antivirus bloque le
+remplacement du fichier.
+
 ## Windows Defender bloque le fichier
 
 C'est attendu, et ce n'est pas un virus. Trois raisons se cumulent :
@@ -66,24 +70,22 @@ Trois façons de s'en sortir, de la plus simple à la plus propre :
   gratuit, la réponse arrive en un ou deux jours, et cela règle le problème pour
   tout le monde. L'empreinte publiée avec la version leur sert de référence.
 
-**Le coupable est identifié.** L'alerte est apparue avec la version qui se
-remplaçait elle-même. La version ordinaire ne le fait plus : elle vous prévient
-et ouvre la page de téléchargement, sans jamais écrire d'exécutable.
+**Le coupable est identifié.** L'alerte vient de la mise à jour automatique :
+l'application télécharge un nouvel exécutable et remplace le sien, ce que
+Windows Defender prend pour le comportement d'un logiciel malveillant.
 
-Trois variantes sont publiées à chaque version :
-
-| Fichier | Mise à jour |
-| --- | --- |
-| `CryptoBulle.exe` | Prévient et ouvre la page. À prendre par défaut. |
-| `CryptoBulle-maj-auto.exe` | Se remplace toute seule. À réserver aux machines où CryptoBulle est exclu de l'antivirus. |
-| `CryptoBulle-sans-maj.exe` | Ne vérifie rien, ne contacte rien. |
+La seule façon de garder ce confort est d'**ajouter CryptoBulle aux exclusions**
+de l'antivirus. Sécurité Windows, *Protection contre les virus et menaces*,
+*Gérer les paramètres*, *Exclusions*, *Ajouter un dossier*, et choisissez le
+dossier où vit `CryptoBulle.exe`. L'alerte disparaît, et la mise à jour
+fonctionne.
 
 ### Comment font les autres applications
 
 Chrome, Discord, Steam ou VS Code se mettent à jour tout seuls sans jamais
-déclencher d'alerte. Ils font pourtant exactement la même chose que
-`CryptoBulle-maj-auto.exe`. La différence tient en deux mots : **signature** et
-**réputation**.
+déclencher d'alerte. Ils font pourtant exactement la même chose que CryptoBulle :
+télécharger un exécutable et remplacer le leur. La différence tient en deux mots :
+**signature** et **réputation**.
 
 Leur exécutable porte une signature numérique délivrée par une autorité que
 Windows reconnaît. Elle prouve qui a compilé le fichier, et rend toute
@@ -95,34 +97,26 @@ Il n'y a pas de troisième voie. Maquiller le programme pour qu'un antivirus ne
 reconnaisse plus son comportement est précisément la technique des logiciels
 malveillants ; ce dépôt ne fera pas ça.
 
-Trois chemins mènent donc à la mise à jour automatique sans alerte :
+Deux chemins mènent à la mise à jour automatique sans alerte :
 
 1. **Exclure CryptoBulle de l'antivirus**, sur votre machine. Gratuit, immédiat,
-   et suffisant si vous êtes le seul à l'utiliser. Prenez ensuite la variante
-   `maj-auto`.
+   et suffisant si vous êtes le seul à l'utiliser.
 2. **Signer les exécutables.** C'est la vraie solution, celle des autres. Un
    certificat de signature se loue à l'année, ou au mois chez certains
    fournisseurs, avec vérification d'identité. Le dépôt est déjà prêt : dès que
    les secrets `SIGNING_PFX` et `SIGNING_PASSWORD` existent, l'action signe les
-   trois fichiers toute seule.
-3. **Passer par le Microsoft Store.** Le Store signe l'application à votre place
-   et gère les mises à jour. Le compte développeur individuel coûte une somme
-   modique, une seule fois. Attention : les applications du Store tournent dans
-   un bac à sable qui empêche probablement l'interception du clavier, donc la
-   frappe masquée.
+   exécutables toute seule.
 
 ## Mises à jour
 
 Au démarrage, l'application demande à GitHub s'il existe une version plus
-récente. Si oui, une bulle vous le dit, et l'entrée **Obtenir la mise à jour**
-apparaît dans le menu de l'icône : elle ouvre la page de téléchargement dans
-votre navigateur. Vous remplacez le fichier, vos réglages et votre phrase
-secrète ne bougent pas.
+récente. Si oui, une bulle vous le dit, et l'entrée **Installer la mise à jour**
+apparaît dans le menu de l'icône. Le nouvel exécutable est alors téléchargé, son
+empreinte comparée à celle publiée par GitHub, il prend la place de l'ancien, et
+l'application redémarre. Vos réglages et votre phrase secrète ne bougent pas.
 
-La variante `CryptoBulle-maj-auto.exe` fait tout elle-même : elle télécharge le
-nouvel exécutable, compare son empreinte à celle publiée par GitHub, prend la
-place de l'ancien et redémarre. C'est plus confortable, mais Windows Defender
-bloque souvent ce comportement.
+Windows Defender bloque souvent ce remplacement : voir la section précédente
+pour l'exclusion à ajouter, une fois.
 
 - C'est le **seul moment** où l'application se connecte à Internet. La case
   *Vérifier les mises à jour au démarrage*, dans les réglages, coupe entièrement

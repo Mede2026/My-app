@@ -62,10 +62,6 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}" ./scripts/build.sh amd64
           VERSION="${{ steps.version.outputs.version }}" ./scripts/build.sh arm64
-          # Deux variantes : celle qui se met à jour toute seule, et celle qui
-          # ne vérifie rien du tout.
-          VERSION="${{ steps.version.outputs.version }}" TAGS=autoupdate ./scripts/build.sh amd64
-          VERSION="${{ steps.version.outputs.version }}" TAGS=noupdate ./scripts/build.sh amd64
           ls -lh dist
 
       # Signature : facultative, et prête à servir. Dès qu'un certificat est
@@ -102,23 +98,21 @@ jobs:
             echo "### Empreintes SHA-256"
             echo
             echo '```'
-            (cd dist && sha256sum CryptoBulle*.exe)
+            (cd dist && sha256sum CryptoBulle.exe CryptoBulle-arm64.exe)
             echo '```'
             echo
             echo "### Quel fichier prendre"
             echo
-            echo "- \`CryptoBulle.exe\` : à prendre par défaut. Elle prévient quand"
-            echo "  une nouvelle version existe et ouvre la page de téléchargement."
-            echo "- \`CryptoBulle-arm64.exe\` : la même, pour un PC à processeur ARM."
-            echo "- \`CryptoBulle-maj-auto.exe\` : se met à jour toute seule. Windows"
-            echo "  Defender bloque souvent ce comportement ; à réserver aux machines"
-            echo "  où CryptoBulle est dans les exclusions de l'antivirus."
-            echo "- \`CryptoBulle-sans-maj.exe\` : ne vérifie rien, ne contacte rien."
+            echo "- \`CryptoBulle.exe\` : PC ordinaire, Intel ou AMD."
+            echo "- \`CryptoBulle-arm64.exe\` : PC à processeur ARM."
+            echo
+            echo "L'application se met à jour toute seule. Ajoutez son dossier aux"
+            echo "exclusions de Windows Defender, sinon l'antivirus bloque le"
+            echo "remplacement de l'exécutable."
           } > notes.md
 
           gh release create "v${{ steps.version.outputs.version }}" \
             dist/CryptoBulle.exe dist/CryptoBulle-arm64.exe \
-            dist/CryptoBulle-maj-auto.exe dist/CryptoBulle-sans-maj.exe \
             --target "$GITHUB_SHA" \
             --title "CryptoBulle ${{ steps.version.outputs.version }}" \
             --notes-file notes.md \

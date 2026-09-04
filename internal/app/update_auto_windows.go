@@ -1,5 +1,3 @@
-//go:build autoupdate
-
 package app
 
 import (
@@ -8,12 +6,12 @@ import (
 	"github.com/mede2026/cryptobulle/internal/update"
 )
 
-// Variante compilee avec la mise a jour entierement automatique : elle
-// telecharge le nouvel executable, verifie son empreinte, prend la place de
-// l'ancien et redemarre.
+// Mise a jour automatique : l'application telecharge le nouvel executable,
+// verifie son empreinte, prend la place de l'ancien et redemarre.
 //
-// C'est le comportement qui inquiete Windows Defender. Prenez cette variante
-// seulement si vous avez ajoute CryptoBulle aux exclusions de l'antivirus.
+// C'est un comportement que Windows Defender bloque souvent : il faut ajouter
+// CryptoBulle aux exclusions de l'antivirus. C'est la seule facon d'installer
+// dans le meme fichier, ce que l'utilisateur a demande.
 
 // updateActionLabel decrit ce que fait l'entree du menu dans cette variante.
 const updateActionLabel = "Installer la mise à jour"
