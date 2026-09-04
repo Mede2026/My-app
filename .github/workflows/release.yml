@@ -62,6 +62,9 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}" ./scripts/build.sh amd64
           VERSION="${{ steps.version.outputs.version }}" ./scripts/build.sh arm64
+          # Variante sans mise à jour automatique, pour les antivirus que le
+          # remplacement d'un exécutable inquiète.
+          VERSION="${{ steps.version.outputs.version }}" TAGS=noupdate ./scripts/build.sh amd64
           ls -lh dist
 
       - name: Publication
@@ -76,16 +79,21 @@ jobs:
             echo "### Empreintes SHA-256"
             echo
             echo '```'
-            (cd dist && sha256sum CryptoBulle.exe CryptoBulle-arm64.exe)
+            (cd dist && sha256sum CryptoBulle.exe CryptoBulle-arm64.exe CryptoBulle-sans-maj.exe)
             echo '```'
             echo
-            echo "Windows Defender peut bloquer ces fichiers : ils ne sont pas"
-            echo "signés, et l'application intercepte le clavier pour la frappe"
-            echo "masquée. Voir la section « Windows Defender » du README."
+            echo "### Quel fichier prendre"
+            echo
+            echo "- \`CryptoBulle.exe\` : PC ordinaire, avec mise à jour automatique."
+            echo "- \`CryptoBulle-arm64.exe\` : PC à processeur ARM."
+            echo "- \`CryptoBulle-sans-maj.exe\` : même application, sans la mise à"
+            echo "  jour automatique. À essayer si Windows Defender bloque la première :"
+            echo "  télécharger un exécutable et se remplacer soi-même est ce qui"
+            echo "  inquiète le plus les antivirus."
           } > notes.md
 
           gh release create "v${{ steps.version.outputs.version }}" \
-            dist/CryptoBulle.exe dist/CryptoBulle-arm64.exe \
+            dist/CryptoBulle.exe dist/CryptoBulle-arm64.exe dist/CryptoBulle-sans-maj.exe \
             --target "$GITHUB_SHA" \
             --title "CryptoBulle ${{ steps.version.outputs.version }}" \
             --notes-file notes.md \

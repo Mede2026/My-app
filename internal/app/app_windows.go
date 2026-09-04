@@ -14,7 +14,6 @@ import (
 	"github.com/mede2026/cryptobulle/internal/config"
 	"github.com/mede2026/cryptobulle/internal/crypto"
 	"github.com/mede2026/cryptobulle/internal/hotkey"
-	"github.com/mede2026/cryptobulle/internal/update"
 	"github.com/mede2026/cryptobulle/internal/w32"
 )
 
@@ -54,7 +53,10 @@ type App struct {
 	busy  atomic.Bool
 
 	// Version publiee plus recente que celle qui tourne, le cas echeant.
-	pending *update.Release
+	// `latest` porte le detail necessaire au telechargement ; il reste nul dans
+	// la variante compilee sans la mise a jour automatique.
+	pending *pendingRelease
+	latest  any
 }
 
 var (
@@ -106,7 +108,7 @@ func Run() error {
 	go warmUp(cfg.Passphrase(), cfg.Salt())
 
 	// La version precedente, laissee par une mise a jour, n'a plus lieu d'etre.
-	update.CleanupOld()
+	cleanupAfterUpdate()
 	if cfg.CheckUpdates {
 		go func() {
 			time.Sleep(5 * time.Second) // laisser le demarrage tranquille
@@ -331,7 +333,7 @@ func (a *App) showTrayMenu() {
 
 	updateLabel := "Rechercher une mise à jour"
 	if release := a.availableUpdate(); release != nil {
-		updateLabel = "Installer la mise à jour (" + release.Version + ")"
+		updateLabel = "Installer la mise à jour (" + release.version + ")"
 	}
 	w32.AppendMenu(menu, w32.MF_STRING, menuUpdate, updateLabel)
 	w32.AppendMenu(menu, w32.MF_STRING, menuQuit, "Quitter")

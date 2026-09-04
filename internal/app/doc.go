@@ -13,4 +13,14 @@ const appName = "CryptoBulle"
 // appVersion est remplacee a la compilation par le numero de la publication
 // (voir scripts/build.sh et le workflow GitHub). La valeur ecrite ici sert aux
 // constructions locales.
-var appVersion = "3.0.0"
+var appVersion = "3.1.0"
+
+// pendingRelease decrit une version plus recente reperee sur GitHub.
+//
+// Le type vit ici, et non dans le paquet update, pour que la version compilee
+// sans la mise a jour automatique n'embarque ni le telechargement ni le
+// remplacement de l'executable.
+type pendingRelease struct {
+	version string
+	notes   string
+}

@@ -12,9 +12,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 arch="${1:-amd64}"
 version="${VERSION:-}"
+# TAGS=noupdate construit la variante sans mise à jour automatique.
+tags="${TAGS:-}"
 
 output="dist/CryptoBulle.exe"
 [ "$arch" = "amd64" ] || output="dist/CryptoBulle-$arch.exe"
+[ -z "$tags" ] || output="dist/CryptoBulle-sans-maj.exe"
 
 # -H windowsgui : pas de fenêtre noire au lancement.
 # -s -w         : on retire les tables de débogage, l'exécutable est plus petit.
@@ -24,6 +27,7 @@ if [ -n "$version" ]; then
 fi
 
 mkdir -p dist
-GOOS=windows GOARCH="$arch" go build -trimpath -ldflags="$flags" -o "$output" ./cmd/cryptobulle
+GOOS=windows GOARCH="$arch" go build -trimpath -tags="$tags" -ldflags="$flags" \
+	-o "$output" ./cmd/cryptobulle
 
 printf 'Terminé : %s (%s Ko)\n' "$output" "$(( $(wc -c < "$output") / 1024 ))"

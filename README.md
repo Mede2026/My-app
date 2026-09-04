@@ -66,8 +66,14 @@ Trois façons de s'en sortir, de la plus simple à la plus propre :
   gratuit, la réponse arrive en un ou deux jours, et cela règle le problème pour
   tout le monde. L'empreinte publiée avec la version leur sert de référence.
 
-Si l'alerte reste gênante, la frappe masquée peut être retirée d'une version
-séparée : c'est elle qui déclenche l'essentiel de la suspicion.
+**Une variante existe pour ça.** Chaque publication contient aussi
+`CryptoBulle-sans-maj.exe` : la même application, compilée sans la mise à jour
+automatique. Elle ne télécharge rien et ne remplace aucun fichier, ce qui retire
+le comportement qui inquiète le plus les antivirus. Si la version ordinaire est
+bloquée et pas celle-là, on saura d'où vient l'alerte.
+
+Si le blocage persiste même sur cette variante, c'est l'interception du clavier
+qui est en cause, et je peux en retirer une version à son tour.
 
 ## Mises à jour
 

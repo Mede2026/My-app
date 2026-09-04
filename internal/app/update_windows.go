@@ -1,3 +1,5 @@
+//go:build !noupdate
+
 package app
 
 import (
@@ -30,7 +32,8 @@ func (a *App) checkUpdates(demande bool) {
 	}
 
 	a.mu.Lock()
-	a.pending = &release
+	a.latest = &release
+	a.pending = &pendingRelease{version: release.Version, notes: release.Notes}
 	a.mu.Unlock()
 
 	notes := release.Notes
@@ -43,26 +46,33 @@ func (a *App) checkUpdates(demande bool) {
 }
 
 // availableUpdate rend la version en attente d'installation, ou nil.
-func (a *App) availableUpdate() *update.Release {
+func (a *App) availableUpdate() *pendingRelease {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.pending
 }
 
+// cleanupAfterUpdate efface l'executable precedent, laisse en place le temps
+// que l'ancienne version se termine.
+func cleanupAfterUpdate() { update.CleanupOld() }
+
 // installUpdate remplace l'executable puis quitte : la nouvelle version prend
 // le relais immediatement.
 func (a *App) installUpdate() {
-	release := a.availableUpdate()
-	if release == nil {
+	a.mu.RLock()
+	latest, _ := a.latest.(*update.Release)
+	a.mu.RUnlock()
+	if latest == nil {
 		a.trigger(func() { a.checkUpdates(true) })
 		return
 	}
+	release := *latest
 
 	a.showBubble("Téléchargement en cours",
 		"Version "+release.Version+", l'application redémarrera toute seule.", kindInfo, 8)
 
 	a.trigger(func() {
-		if err := update.Install(*release, appVersion); err != nil {
+		if err := update.Install(release, appVersion); err != nil {
 			a.showBubble("Mise à jour impossible", capitalize(err.Error()), kindError, -1)
 			return
 		}
