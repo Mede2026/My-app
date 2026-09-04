@@ -78,6 +78,39 @@ Trois variantes sont publiées à chaque version :
 | `CryptoBulle-maj-auto.exe` | Se remplace toute seule. À réserver aux machines où CryptoBulle est exclu de l'antivirus. |
 | `CryptoBulle-sans-maj.exe` | Ne vérifie rien, ne contacte rien. |
 
+### Comment font les autres applications
+
+Chrome, Discord, Steam ou VS Code se mettent à jour tout seuls sans jamais
+déclencher d'alerte. Ils font pourtant exactement la même chose que
+`CryptoBulle-maj-auto.exe`. La différence tient en deux mots : **signature** et
+**réputation**.
+
+Leur exécutable porte une signature numérique délivrée par une autorité que
+Windows reconnaît. Elle prouve qui a compilé le fichier, et rend toute
+modification détectable. À cela s'ajoute la réputation : le même fichier signé
+est téléchargé des millions de fois, donc Windows le connaît. Un exécutable non
+signé, produit hier, téléchargé trois fois, part du bas de l'échelle.
+
+Il n'y a pas de troisième voie. Maquiller le programme pour qu'un antivirus ne
+reconnaisse plus son comportement est précisément la technique des logiciels
+malveillants ; ce dépôt ne fera pas ça.
+
+Trois chemins mènent donc à la mise à jour automatique sans alerte :
+
+1. **Exclure CryptoBulle de l'antivirus**, sur votre machine. Gratuit, immédiat,
+   et suffisant si vous êtes le seul à l'utiliser. Prenez ensuite la variante
+   `maj-auto`.
+2. **Signer les exécutables.** C'est la vraie solution, celle des autres. Un
+   certificat de signature se loue à l'année, ou au mois chez certains
+   fournisseurs, avec vérification d'identité. Le dépôt est déjà prêt : dès que
+   les secrets `SIGNING_PFX` et `SIGNING_PASSWORD` existent, l'action signe les
+   trois fichiers toute seule.
+3. **Passer par le Microsoft Store.** Le Store signe l'application à votre place
+   et gère les mises à jour. Le compte développeur individuel coûte une somme
+   modique, une seule fois. Attention : les applications du Store tournent dans
+   un bac à sable qui empêche probablement l'interception du clavier, donc la
+   frappe masquée.
+
 ## Mises à jour
 
 Au démarrage, l'application demande à GitHub s'il existe une version plus

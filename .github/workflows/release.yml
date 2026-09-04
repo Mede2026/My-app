@@ -68,6 +68,28 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}" TAGS=noupdate ./scripts/build.sh amd64
           ls -lh dist
 
+      # Signature : facultative, et prête à servir. Dès qu'un certificat est
+      # déposé dans les secrets du dépôt (SIGNING_PFX en base64 et
+      # SIGNING_PASSWORD), les exécutables sont signés et Windows Defender
+      # cesse de s'alarmer, y compris pour la mise à jour automatique.
+      - name: Signature des exécutables
+        if: steps.existe.outputs.deja == 'non' && env.PFX != ''
+        env:
+          PFX: ${{ secrets.SIGNING_PFX }}
+          PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq osslsigncode
+          echo "$PFX" | base64 -d > certificat.pfx
+          for fichier in dist/*.exe; do
+            osslsigncode sign -pkcs12 certificat.pfx -pass "$PASSWORD" \
+              -n CryptoBulle -i "https://github.com/${{ github.repository }}" \
+              -t http://timestamp.digicert.com \
+              -in "$fichier" -out "$fichier.signe"
+            mv "$fichier.signe" "$fichier"
+          done
+          rm -f certificat.pfx
+          echo "Exécutables signés."
+
       - name: Publication
         if: steps.existe.outputs.deja == 'non'
         env:
