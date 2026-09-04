@@ -18,6 +18,9 @@ const Repository = "Mede2026/My-app"
 // LatestURL est l'adresse qui decrit la derniere version publiee.
 const LatestURL = "https://api.github.com/repos/" + Repository + "/releases/latest"
 
+// PageURL est la page a ouvrir dans le navigateur pour telecharger a la main.
+const PageURL = "https://github.com/" + Repository + "/releases/latest"
+
 // Release decrit une version publiee.
 type Release struct {
 	Version string // « 3.0.1 », sans le v

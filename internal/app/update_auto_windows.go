@@ -1,25 +1,22 @@
-//go:build !noupdate && !autoupdate
+//go:build autoupdate
 
 package app
 
 import (
+	"time"
+
 	"github.com/mede2026/cryptobulle/internal/update"
-	"github.com/mede2026/cryptobulle/internal/w32"
 )
 
-// Mises a jour assistees : l'application demande a GitHub la derniere version
-// publiee et vous previent, puis ouvre la page de telechargement dans le
-// navigateur. Elle ne telecharge aucun executable et n'en remplace aucun.
+// Variante compilee avec la mise a jour entierement automatique : elle
+// telecharge le nouvel executable, verifie son empreinte, prend la place de
+// l'ancien et redemarre.
 //
-// C'est ce dernier comportement, present dans la variante « maj-auto », que
-// Windows Defender prend pour celui d'un logiciel malveillant. Ici, il n'y a
-// qu'une lecture de texte et une page ouverte.
+// C'est le comportement qui inquiete Windows Defender. Prenez cette variante
+// seulement si vous avez ajoute CryptoBulle aux exclusions de l'antivirus.
 
-// checkUpdates interroge GitHub. `demande` distingue la verification lancee par
-// l'utilisateur, qui merite toujours une reponse, de celle du demarrage, qui
-// reste silencieuse quand tout va bien.
 // updateActionLabel decrit ce que fait l'entree du menu dans cette variante.
-const updateActionLabel = "Obtenir la mise à jour"
+const updateActionLabel = "Installer la mise à jour"
 
 func (a *App) checkUpdates(demande bool) {
 	release, plusRecente, err := update.Check(appVersion)
@@ -43,7 +40,7 @@ func (a *App) checkUpdates(demande bool) {
 	a.mu.Unlock()
 
 	a.showBubble("Version "+release.Version+" disponible",
-		"Clic droit sur l'icône près de l'horloge, puis « Obtenir la mise à jour ».",
+		"Clic droit sur l'icône près de l'horloge, puis « Installer la mise à jour ».",
 		kindInfo, 12)
 }
 
@@ -58,15 +55,29 @@ func (a *App) availableUpdate() *pendingRelease {
 // que l'ancienne version se termine.
 func cleanupAfterUpdate() { update.CleanupOld() }
 
-// installUpdate ouvre la page de la nouvelle version dans le navigateur.
+// installUpdate remplace l'executable puis quitte : la nouvelle version prend
+// le relais immediatement.
 func (a *App) installUpdate() {
-	release := a.availableUpdate()
-	if release == nil {
+	a.mu.RLock()
+	latest, _ := a.latest.(*update.Release)
+	a.mu.RUnlock()
+	if latest == nil {
 		a.trigger(func() { a.checkUpdates(true) })
 		return
 	}
-	w32.OpenInBrowser(update.PageURL)
-	a.showBubble("Page ouverte dans le navigateur",
-		"Téléchargez "+release.version+", puis remplacez votre CryptoBulle.exe par le nouveau.",
-		kindInfo, 8)
+	release := *latest
+
+	a.showBubble("Téléchargement en cours",
+		"Version "+release.Version+", l'application redémarrera toute seule.", kindInfo, 8)
+
+	a.trigger(func() {
+		if err := update.Install(release, appVersion); err != nil {
+			a.showBubble("Mise à jour impossible", capitalize(err.Error()), kindError, -1)
+			return
+		}
+		a.post(func() {
+			time.Sleep(300 * time.Millisecond)
+			a.quit()
+		})
+	})
 }

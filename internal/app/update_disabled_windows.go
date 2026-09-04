@@ -9,6 +9,9 @@ package app
 // honnete. Cette version ne contient donc ni telechargement ni remplacement, et
 // il faut passer par la page des publications pour changer de version.
 
+// updateActionLabel decrit ce que fait l'entree du menu dans cette variante.
+const updateActionLabel = "Mise à jour"
+
 // availableUpdate ne rend jamais rien : cette version ne cherche pas de mise a jour.
 func (a *App) availableUpdate() *pendingRelease { return nil }
 

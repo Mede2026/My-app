@@ -66,24 +66,30 @@ Trois façons de s'en sortir, de la plus simple à la plus propre :
   gratuit, la réponse arrive en un ou deux jours, et cela règle le problème pour
   tout le monde. L'empreinte publiée avec la version leur sert de référence.
 
-**Une variante existe pour ça.** Chaque publication contient aussi
-`CryptoBulle-sans-maj.exe` : la même application, compilée sans la mise à jour
-automatique. Elle ne télécharge rien et ne remplace aucun fichier, ce qui retire
-le comportement qui inquiète le plus les antivirus. Si la version ordinaire est
-bloquée et pas celle-là, on saura d'où vient l'alerte.
+**Le coupable est identifié.** L'alerte est apparue avec la version qui se
+remplaçait elle-même. La version ordinaire ne le fait plus : elle vous prévient
+et ouvre la page de téléchargement, sans jamais écrire d'exécutable.
 
-Si le blocage persiste même sur cette variante, c'est l'interception du clavier
-qui est en cause, et je peux en retirer une version à son tour.
+Trois variantes sont publiées à chaque version :
+
+| Fichier | Mise à jour |
+| --- | --- |
+| `CryptoBulle.exe` | Prévient et ouvre la page. À prendre par défaut. |
+| `CryptoBulle-maj-auto.exe` | Se remplace toute seule. À réserver aux machines où CryptoBulle est exclu de l'antivirus. |
+| `CryptoBulle-sans-maj.exe` | Ne vérifie rien, ne contacte rien. |
 
 ## Mises à jour
 
-L'application se met à jour toute seule. Au démarrage, elle demande à GitHub s'il
-existe une version plus récente. Si oui, une bulle vous le dit, et l'entrée
-**Installer la mise à jour** apparaît dans le menu de l'icône.
+Au démarrage, l'application demande à GitHub s'il existe une version plus
+récente. Si oui, une bulle vous le dit, et l'entrée **Obtenir la mise à jour**
+apparaît dans le menu de l'icône : elle ouvre la page de téléchargement dans
+votre navigateur. Vous remplacez le fichier, vos réglages et votre phrase
+secrète ne bougent pas.
 
-Ce qui se passe alors : le nouvel exécutable est téléchargé, son empreinte est
-comparée à celle publiée par GitHub, il prend la place de l'ancien, et
-l'application redémarre. Vos réglages et votre phrase secrète ne bougent pas.
+La variante `CryptoBulle-maj-auto.exe` fait tout elle-même : elle télécharge le
+nouvel exécutable, compare son empreinte à celle publiée par GitHub, prend la
+place de l'ancien et redémarre. C'est plus confortable, mais Windows Defender
+bloque souvent ce comportement.
 
 - C'est le **seul moment** où l'application se connecte à Internet. La case
   *Vérifier les mises à jour au démarrage*, dans les réglages, coupe entièrement

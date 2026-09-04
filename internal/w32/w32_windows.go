@@ -731,6 +731,17 @@ func SysColorBrush(index int32) HBRUSH {
 	return HBRUSH(brush)
 }
 
+var procShellExecute = shell32.NewProc("ShellExecuteW")
+
+// OpenInBrowser demande a Windows d'ouvrir une adresse avec le navigateur par
+// defaut. L'application ne telecharge rien elle-meme.
+func OpenInBrowser(address string) {
+	procShellExecute.Call(0,
+		uintptr(unsafe.Pointer(Str("open"))), uintptr(unsafe.Pointer(Str(address))),
+		0, 0, SW_SHOWNORMAL,
+	)
+}
+
 func GetDC(hwnd HWND) HDC {
 	dc, _, _ := procGetDC.Call(uintptr(hwnd))
 	return HDC(dc)

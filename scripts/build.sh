@@ -12,12 +12,18 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 arch="${1:-amd64}"
 version="${VERSION:-}"
-# TAGS=noupdate construit la variante sans mise à jour automatique.
+# Variantes de mise à jour :
+#   (rien)            l'application prévient et ouvre la page de téléchargement
+#   TAGS=autoupdate   elle télécharge et se remplace toute seule
+#   TAGS=noupdate     elle ne vérifie rien du tout
 tags="${TAGS:-}"
 
 output="dist/CryptoBulle.exe"
 [ "$arch" = "amd64" ] || output="dist/CryptoBulle-$arch.exe"
-[ -z "$tags" ] || output="dist/CryptoBulle-sans-maj.exe"
+case "$tags" in
+	autoupdate) output="dist/CryptoBulle-maj-auto.exe" ;;
+	noupdate) output="dist/CryptoBulle-sans-maj.exe" ;;
+esac
 
 # -H windowsgui : pas de fenêtre noire au lancement.
 # -s -w         : on retire les tables de débogage, l'exécutable est plus petit.

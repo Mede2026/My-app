@@ -333,7 +333,7 @@ func (a *App) showTrayMenu() {
 
 	updateLabel := "Rechercher une mise à jour"
 	if release := a.availableUpdate(); release != nil {
-		updateLabel = "Installer la mise à jour (" + release.version + ")"
+		updateLabel = updateActionLabel + " (" + release.version + ")"
 	}
 	w32.AppendMenu(menu, w32.MF_STRING, menuUpdate, updateLabel)
 	w32.AppendMenu(menu, w32.MF_STRING, menuQuit, "Quitter")
