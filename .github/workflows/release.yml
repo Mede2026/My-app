@@ -1,0 +1,45 @@
+name: Publier une version
+
+# Une publication est créée dès qu'une étiquette « v3.0.1 » est poussée.
+# Le numéro de version est inscrit dans l'exécutable : il correspond donc
+# toujours à celui de la publication, et la mise à jour automatique s'y fie.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  publier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Tests
+        run: |
+          test -z "$(gofmt -l ./cmd ./internal)"
+          go vet ./...
+          GOOS=windows go vet ./...
+          go test ./...
+
+      - name: Compilation
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          VERSION="$VERSION" ./scripts/build.sh amd64
+          VERSION="$VERSION" ./scripts/build.sh arm64
+          ls -lh dist
+
+      - name: Publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/CryptoBulle.exe dist/CryptoBulle-arm64.exe \
+            --title "CryptoBulle $VERSION" \
+            --generate-notes

@@ -36,6 +36,9 @@ type Config struct {
 	// Remettre l'ancien contenu du presse-papiers apres coup.
 	RestoreClipboard bool   `json:"restore_clipboard"`
 	LaunchAtStartup  bool   `json:"launch_at_startup"`
+	// Vérifier au démarrage si une nouvelle version est publiée. C'est le seul
+	// moment où l'application se connecte à Internet.
+	CheckUpdates bool `json:"check_updates"`
 	Theme            string `json:"theme"` // "sombre" ou "clair"
 	// Sel personnel, tire une fois : il permet de garder la cle en cache et
 	// rend le chiffrement instantane (voir crypto.Encrypt).
@@ -50,6 +53,7 @@ func Default() Config {
 		HotkeyMask:       DefaultHotkeyMask,
 		BubbleSeconds:    12,
 		AutoPaste:        true,
+		CheckUpdates:     true,
 		RestoreClipboard: true,
 		Theme:            "sombre",
 	}

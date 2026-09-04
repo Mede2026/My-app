@@ -7,8 +7,10 @@
 // l'interface toujours reactive.
 package app
 
-// Nom et version affiches dans l'interface.
-const (
-	appName    = "CryptoBulle"
-	appVersion = "2.9.0"
-)
+// appName est le nom affiche partout dans l'interface.
+const appName = "CryptoBulle"
+
+// appVersion est remplacee a la compilation par le numero de la publication
+// (voir scripts/build.sh et le workflow GitHub). La valeur ecrite ici sert aux
+// constructions locales.
+var appVersion = "3.0.0"

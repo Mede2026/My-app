@@ -28,9 +28,45 @@ Un seul fichier `CryptoBulle.exe` de **2,91 Mo**. Rien à installer.
 
 ## Installation
 
-Téléchargez `CryptoBulle.exe` et double-cliquez. C'est tout : pas d'installateur,
-pas de Python, pas de bibliothèque à côté. Au premier lancement, la fenêtre de
-réglages demande votre **phrase secrète**.
+Téléchargez `CryptoBulle.exe` depuis la [dernière
+publication](https://github.com/Mede2026/My-app/releases/latest) et double-cliquez.
+C'est tout : pas d'installateur, pas de bibliothèque à côté. Au premier lancement,
+la fenêtre de réglages demande votre **phrase secrète**.
+
+Prenez `CryptoBulle.exe` sur un PC ordinaire, `CryptoBulle-arm64.exe` sur un PC à
+processeur ARM comme un Surface Pro X.
+
+## Mises à jour
+
+L'application se met à jour toute seule. Au démarrage, elle demande à GitHub s'il
+existe une version plus récente. Si oui, une bulle vous le dit, et l'entrée
+**Installer la mise à jour** apparaît dans le menu de l'icône.
+
+Ce qui se passe alors : le nouvel exécutable est téléchargé, son empreinte est
+comparée à celle publiée par GitHub, il prend la place de l'ancien, et
+l'application redémarre. Vos réglages et votre phrase secrète ne bougent pas.
+
+- C'est le **seul moment** où l'application se connecte à Internet. La case
+  *Vérifier les mises à jour au démarrage*, dans les réglages, coupe entièrement
+  ce comportement.
+- Le téléchargement passe par **WinHTTP**, la bibliothèque HTTP de Windows :
+  certificats, redirections et proxy d'école ou d'entreprise sont gérés par le
+  système. Cela évite aussi d'embarquer la pile réseau de Go, qui pèse à elle
+  seule près de deux mégaoctets.
+- Windows interdit d'écraser un programme en cours d'exécution, mais autorise à
+  le renommer. L'ancien exécutable est donc mis de côté puis effacé au démarrage
+  suivant.
+- Si CryptoBulle est rangé dans un dossier protégé, comme *Program Files*, le
+  remplacement échoue et le message vous dit de le déplacer.
+
+Pour publier une version, il suffit de pousser une étiquette :
+
+```bash
+git tag v3.0.1 && git push origin v3.0.1
+```
+
+L'action GitHub compile les deux architectures, écrit le numéro de version dans
+l'exécutable, et crée une publication propre avec ses notes.
 
 Pour construire vous-même, avec [Go](https://go.dev/dl/) installé :
 

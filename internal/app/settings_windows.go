@@ -20,7 +20,7 @@ const (
 
 	// Taille de la zone utile, en points logiques.
 	contentWidth  = 470
-	contentHeight = 650
+	contentHeight = 672
 )
 
 // Identifiants des controles.
@@ -37,6 +37,7 @@ const (
 	idAutoPaste
 	idRestore
 	idStartup
+	idCheckUpdates
 	idThemeDark
 	idThemeLight
 	idWorkshopIn
@@ -45,6 +46,7 @@ const (
 	idWorkshopDecrypt
 	idWorkshopCopy
 	idSelfTest
+	idUpdate
 	idSave
 	idClose
 )
@@ -77,6 +79,7 @@ type settingsWindow struct {
 	hotkeyMask                   w32.HWND
 	seconds                      w32.HWND
 	autoPaste, restore, startup  w32.HWND
+	checkUpdates                 w32.HWND
 	themeDark, themeLight        w32.HWND
 	workshopIn, workshopOut      w32.HWND
 	storageNote                  w32.HWND
@@ -197,12 +200,13 @@ func (s *settingsWindow) build(instance windows.Handle, scale func(int32) int32)
 	button("Enregistrer...", idCaptureMask, 330, 191, 110)
 
 	// --- comportement
-	group("Comportement", 230, 106)
+	group("Comportement", 230, 128)
 	label("Durée de la bulle (secondes, 0 = manuel)", 28, 254, 250, 20)
 	s.seconds = edit(idSeconds, w32.ES_AUTOHSCROLL, 284, 252, 50, 22)
 	s.autoPaste = check("Coller automatiquement le texte chiffré", idAutoPaste, 28, 278, 260)
 	s.restore = check("Remettre l'ancien presse-papiers ensuite", idRestore, 28, 300, 260)
 	s.startup = check("Lancer au démarrage de Windows", idStartup, 28, 322, 260)
+	s.checkUpdates = check("Vérifier les mises à jour au démarrage", idCheckUpdates, 28, 344, 300)
 	s.themeDark = s.add("BUTTON", "Bulle sombre",
 		w32.WS_CHILD|w32.WS_VISIBLE|w32.WS_GROUP|w32.BS_AUTORADIOBUTTON, 300, 278, 130, 20,
 		idThemeDark, instance, scale)
@@ -211,21 +215,22 @@ func (s *settingsWindow) build(instance windows.Handle, scale func(int32) int32)
 		idThemeLight, instance, scale)
 
 	// --- atelier
-	group("Atelier", 344, 210)
-	label("Texte à chiffrer, ou message chiffré à relire :", 28, 364, 400, 18)
-	s.workshopIn = edit(idWorkshopIn, w32.ES_MULTILINE|w32.ES_WANTRETURN|w32.WS_VSCROLL, 28, 382, 410, 60)
-	button("Chiffrer", idWorkshopEncrypt, 28, 448, 90)
-	button("Déchiffrer", idWorkshopDecrypt, 124, 448, 90)
-	button("Copier", idWorkshopCopy, 220, 448, 70)
-	button("Tester la frappe masquée", idSelfTest, 296, 448, 142)
-	s.workshopOut = edit(idWorkshopOut, w32.ES_MULTILINE|w32.ES_READONLY|w32.WS_VSCROLL, 28, 478, 410, 62)
+	group("Atelier", 366, 210)
+	label("Texte à chiffrer, ou message chiffré à relire :", 28, 386, 400, 18)
+	s.workshopIn = edit(idWorkshopIn, w32.ES_MULTILINE|w32.ES_WANTRETURN|w32.WS_VSCROLL, 28, 404, 410, 60)
+	button("Chiffrer", idWorkshopEncrypt, 28, 470, 90)
+	button("Déchiffrer", idWorkshopDecrypt, 124, 470, 90)
+	button("Copier", idWorkshopCopy, 220, 470, 70)
+	button("Tester la frappe masquée", idSelfTest, 296, 470, 142)
+	s.workshopOut = edit(idWorkshopOut, w32.ES_MULTILINE|w32.ES_READONLY|w32.WS_VSCROLL, 28, 500, 410, 62)
 
 	// --- aide et boutons finaux
 	label("Frappe masquée : tout ce que vous tapez s'affiche chiffré, en direct. "+
-		"Échap ou le même raccourci pour en sortir.", 16, 558, 440, 32)
-	label(appName+" "+appVersion+" - AES-256-GCM, clé dérivée par scrypt.", 16, 590, 440, 18)
-	button("Enregistrer", idSave, 240, 614, 105)
-	button("Fermer", idClose, 351, 614, 105)
+		"Échap ou le même raccourci pour en sortir.", 16, 580, 440, 32)
+	label(appName+" "+appVersion+" - AES-256-GCM, clé dérivée par scrypt.", 16, 612, 300, 18)
+	button("Mise à jour", idUpdate, 330, 608, 126)
+	button("Enregistrer", idSave, 240, 636, 105)
+	button("Fermer", idClose, 351, 636, 105)
 }
 
 // add cree un controle enfant et lui donne la police de l'interface.
@@ -248,6 +253,7 @@ func (s *settingsWindow) load(cfg config.Config) {
 	w32.SetChecked(s.autoPaste, cfg.AutoPaste)
 	w32.SetChecked(s.restore, cfg.RestoreClipboard)
 	w32.SetChecked(s.startup, startupEnabled())
+	w32.SetChecked(s.checkUpdates, cfg.CheckUpdates)
 	w32.SetChecked(s.themeDark, cfg.Theme != "clair")
 	w32.SetChecked(s.themeLight, cfg.Theme == "clair")
 	w32.SetChecked(s.showPassphrase, false)
@@ -314,6 +320,7 @@ func (s *settingsWindow) save() {
 	if w32.Checked(s.themeLight) {
 		updated.Theme = "clair"
 	}
+	updated.CheckUpdates = w32.Checked(s.checkUpdates)
 	updated.LaunchAtStartup = setStartup(w32.Checked(s.startup))
 	w32.SetChecked(s.startup, updated.LaunchAtStartup)
 
@@ -571,6 +578,8 @@ func (s *settingsWindow) command(id uint32) {
 		s.workshop(false)
 	case idSelfTest:
 		s.startSelfTest()
+	case idUpdate:
+		s.app.installUpdate()
 	case idWorkshopCopy:
 		_ = setClipboardText(strings.TrimSpace(w32.WindowText(s.workshopOut)))
 	case idSave:

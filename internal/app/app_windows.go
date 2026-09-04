@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -13,6 +14,7 @@ import (
 	"github.com/mede2026/cryptobulle/internal/config"
 	"github.com/mede2026/cryptobulle/internal/crypto"
 	"github.com/mede2026/cryptobulle/internal/hotkey"
+	"github.com/mede2026/cryptobulle/internal/update"
 	"github.com/mede2026/cryptobulle/internal/w32"
 )
 
@@ -30,7 +32,8 @@ const (
 	menuEncrypt  = 2
 	menuDecrypt  = 3
 	menuMask     = 4
-	menuQuit     = 5
+	menuUpdate   = 5
+	menuQuit     = 6
 )
 
 // App tient l'etat de l'application. Une seule instance vit par processus.
@@ -49,6 +52,9 @@ type App struct {
 
 	tasks chan func()
 	busy  atomic.Bool
+
+	// Version publiee plus recente que celle qui tourne, le cas echeant.
+	pending *update.Release
 }
 
 var (
@@ -98,6 +104,15 @@ func Run() error {
 
 	cfg := app.config()
 	go warmUp(cfg.Passphrase(), cfg.Salt())
+
+	// La version precedente, laissee par une mise a jour, n'a plus lieu d'etre.
+	update.CleanupOld()
+	if cfg.CheckUpdates {
+		go func() {
+			time.Sleep(5 * time.Second) // laisser le demarrage tranquille
+			app.checkUpdates(false)
+		}()
+	}
 
 	if !cfg.HasPassphrase() {
 		app.openSettings()
@@ -313,6 +328,12 @@ func (a *App) showTrayMenu() {
 	}
 	w32.AppendMenu(menu, w32.MF_STRING, menuMask, maskLabel)
 	w32.AppendMenu(menu, w32.MF_SEPARATOR, 0, "")
+
+	updateLabel := "Rechercher une mise à jour"
+	if release := a.availableUpdate(); release != nil {
+		updateLabel = "Installer la mise à jour (" + release.Version + ")"
+	}
+	w32.AppendMenu(menu, w32.MF_STRING, menuUpdate, updateLabel)
 	w32.AppendMenu(menu, w32.MF_STRING, menuQuit, "Quitter")
 
 	point := w32.CursorPos()
@@ -331,6 +352,8 @@ func (a *App) showTrayMenu() {
 		a.trigger(a.actionDecrypt)
 	case menuMask:
 		a.mask.toggle()
+	case menuUpdate:
+		a.installUpdate()
 	case menuQuit:
 		a.quit()
 	}
