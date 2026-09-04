@@ -34,12 +34,12 @@ type Config struct {
 	// Coller automatiquement le texte chiffré a la place de la selection.
 	AutoPaste bool `json:"auto_paste"`
 	// Remettre l'ancien contenu du presse-papiers apres coup.
-	RestoreClipboard bool   `json:"restore_clipboard"`
-	LaunchAtStartup  bool   `json:"launch_at_startup"`
+	RestoreClipboard bool `json:"restore_clipboard"`
+	LaunchAtStartup  bool `json:"launch_at_startup"`
 	// Vérifier au démarrage si une nouvelle version est publiée. C'est le seul
 	// moment où l'application se connecte à Internet.
-	CheckUpdates bool `json:"check_updates"`
-	Theme            string `json:"theme"` // "sombre" ou "clair"
+	CheckUpdates bool   `json:"check_updates"`
+	Theme        string `json:"theme"` // "sombre" ou "clair"
 	// Sel personnel, tire une fois : il permet de garder la cle en cache et
 	// rend le chiffrement instantane (voir crypto.Encrypt).
 	KeySalt string `json:"key_salt"`
