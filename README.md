@@ -15,7 +15,7 @@ Un seul fichier `CryptoBulle.exe` de **2,91 Mo**. Rien à installer.
 | Raccourci (modifiable) | Action |
 | --- | --- |
 | `Ctrl+Alt+E` | Chiffre la sélection et la colle à la place |
-| `Ctrl+Alt+D` | Déchiffre la sélection et l'affiche dans une bulle |
+| `Ctrl+Alt+D` | Déchiffre ce qui est sous la souris, ou la sélection |
 | `Ctrl+Alt+M` | Allume ou éteint la **frappe masquée** |
 
 - L'application vit dans la **zone de notification**, à côté de l'horloge. Clic droit :
@@ -23,6 +23,12 @@ Un seul fichier `CryptoBulle.exe` de **2,91 Mo**. Rien à installer.
 - La bulle se ferme seule après quelques secondes, sauf si la souris est dessus.
   Boutons **Copier** et **Fermer**, touche `Échap`, déplaçable à la souris.
 - L'ancien contenu du presse-papiers est remis en place après l'opération.
+- **Rien à sélectionner** : posez la souris sur un texte chiffré et faites
+  `Ctrl+Alt+D`. L'application demande à Windows quel texte se trouve à cet
+  endroit, prend la ligne entière et la déchiffre. Elle ne clique pas, ne change
+  pas votre sélection et ne touche pas au presse-papiers.
+- Si le survol ne donne rien de déchiffrable, l'ancienne méthode prend le relais :
+  la sélection est copiée, puis déchiffrée.
 - La fenêtre de réglages contient un **atelier** pour chiffrer ou déchiffrer à la main.
 - Le chiffrement ne dit rien quand il réussit : le texte collé se voit déjà.
 
@@ -406,7 +412,7 @@ cmd/cryptobulle/      point d'entrée, manifeste et icône de l'exécutable
 internal/crypto/      les deux formats : scrypt, AES-GCM, chiffrement par flux
 internal/hotkey/      lecture des combinaisons (« ctrl+alt+d »)
 internal/config/      réglages JSON, phrase secrète protégée par DPAPI
-internal/w32/         appels aux API de Windows, dessin lissé
+internal/w32/         appels aux API de Windows, dessin lissé, texte sous la souris
 internal/app/         boucle de messages, bulle, réglages, icône, frappe masquée
 scripts/              build.sh (compilation croisée), make_icon.py (icône)
 ```

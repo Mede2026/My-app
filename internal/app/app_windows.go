@@ -409,6 +409,17 @@ func (a *App) actionDecrypt() {
 		return
 	}
 
+	// D'abord sous la souris : Windows sait dire quel texte se trouve à un
+	// endroit donné, sans cliquer, sans rien sélectionner et sans toucher au
+	// presse-papiers. Le résultat n'est retenu que s'il se déchiffre vraiment,
+	// sinon on retombe sur la sélection.
+	if survole := w32.TextAtPoint(w32.CursorPos()); survole != "" {
+		if plaintext, err := crypto.DecryptText(survole, cfg.Passphrase()); err == nil {
+			a.showBubble("Texte déchiffré", plaintext, kindSuccess, -1)
+			return
+		}
+	}
+
 	text, previous := selectedText()
 	if cfg.RestoreClipboard && previous != "" {
 		_ = setClipboardText(previous)
