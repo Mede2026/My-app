@@ -1,11 +1,18 @@
 name: Publier une version
 
-# Une publication est créée dès qu'une étiquette « v3.0.1 » est poussée.
-# Le numéro de version est inscrit dans l'exécutable : il correspond donc
+# Une publication est créée automatiquement dès que le numéro de version change
+# dans le code (internal/app/doc.go). Une seule publication par version : si
+# elle existe déjà, le travail s'arrête sans rien faire.
+#
+# Le numéro est inscrit dans l'exécutable à la compilation, il correspond donc
 # toujours à celui de la publication, et la mise à jour automatique s'y fie.
 on:
   push:
-    tags: ["v*"]
+    branches: ["**"]
+    paths:
+      - "internal/app/doc.go"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -21,7 +28,31 @@ jobs:
         with:
           go-version: "1.24"
 
+      - name: Lire le numéro de version
+        id: version
+        run: |
+          VERSION=$(sed -n 's/^var appVersion = "\(.*\)"$/\1/p' internal/app/doc.go)
+          if [ -z "$VERSION" ]; then
+            echo "Numéro de version introuvable dans internal/app/doc.go" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version lue : $VERSION"
+
+      - name: Cette version est-elle déjà publiée ?
+        id: existe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "deja=oui" >> "$GITHUB_OUTPUT"
+            echo "Déjà publiée, rien à faire."
+          else
+            echo "deja=non" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Tests
+        if: steps.existe.outputs.deja == 'non'
         run: |
           test -z "$(gofmt -l ./cmd ./internal)"
           go vet ./...
@@ -29,17 +60,19 @@ jobs:
           go test ./...
 
       - name: Compilation
+        if: steps.existe.outputs.deja == 'non'
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          VERSION="$VERSION" ./scripts/build.sh amd64
-          VERSION="$VERSION" ./scripts/build.sh arm64
+          VERSION="${{ steps.version.outputs.version }}" ./scripts/build.sh amd64
+          VERSION="${{ steps.version.outputs.version }}" ./scripts/build.sh arm64
           ls -lh dist
 
       - name: Publication
+        if: steps.existe.outputs.deja == 'non'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/CryptoBulle.exe dist/CryptoBulle-arm64.exe \
-            --title "CryptoBulle $VERSION" \
+          gh release create "v${{ steps.version.outputs.version }}" \
+            dist/CryptoBulle.exe dist/CryptoBulle-arm64.exe \
+            --target "$GITHUB_SHA" \
+            --title "CryptoBulle ${{ steps.version.outputs.version }}" \
             --generate-notes

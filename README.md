@@ -59,14 +59,14 @@ l'application redémarre. Vos réglages et votre phrase secrète ne bougent pas.
 - Si CryptoBulle est rangé dans un dossier protégé, comme *Program Files*, le
   remplacement échoue et le message vous dit de le déplacer.
 
-Pour publier une version, il suffit de pousser une étiquette :
+Publier une version demande une seule chose : changer le numéro dans
+`internal/app/doc.go`. L'action GitHub s'occupe du reste, dès que le changement
+est poussé.
 
-```bash
-git tag v3.0.1 && git push origin v3.0.1
-```
-
-L'action GitHub compile les deux architectures, écrit le numéro de version dans
-l'exécutable, et crée une publication propre avec ses notes.
+Elle vérifie que cette version n'est pas déjà publiée, lance les tests, compile
+les deux architectures avec le bon numéro inscrit dedans, puis crée la
+publication avec ses notes et ses deux fichiers. Une version, une publication,
+jamais de doublon.
 
 Pour construire vous-même, avec [Go](https://go.dev/dl/) installé :
 
